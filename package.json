@@ -32,7 +32,7 @@
   "author": "Wude (Wude-m)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Wude-m/send-to-pi.git"
+    "url": "git+https://github.com/Wude-m/send-to-pi.git"
   },
   "license": "MIT",
   "engines": {
