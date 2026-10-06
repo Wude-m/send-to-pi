@@ -1,0 +1,31 @@
+{
+  "name": "send-to-pi",
+  "version": "1.0.0",
+  "description": "Send webpage snippets, URLs, or articles directly to your local Pi coding agent terminal.",
+  "main": "server/src/index.js",
+  "bin": {
+    "send-to-pi": "server/bin/send-to-pi.js"
+  },
+  "scripts": {
+    "start": "node server/src/index.js",
+    "status": "node server/bin/send-to-pi.js status",
+    "test": "node server/bin/send-to-pi.js --help"
+  },
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "chrome-extension",
+    "terminal",
+    "ai-agent",
+    "developer-tools"
+  ],
+  "author": "JIan (JIan5090)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JIan5090/send-to-pi.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
