@@ -143,4 +143,4 @@ Please feel free to open an Issue or Pull Request.
 
 ## 📄 License
 
-MIT License © 2026 JIan (JIan5090)
+MIT License © 2026 Wude

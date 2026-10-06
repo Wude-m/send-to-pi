@@ -143,4 +143,4 @@ PI_TERMINAL=ghostty PI_WORKDIR=~/mycode npx send-to-pi start
 
 ## 📄 开源协议
 
-基于 [MIT License](./LICENSE) 开源 © 2026 JIan (JIan5090)
+基于 [MIT License](./LICENSE) 开源 © 2026 Wude
