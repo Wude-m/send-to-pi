@@ -46,14 +46,20 @@ function forwardToActivePi(content) {
 }
 
 function formatContent(payload) {
-  const { type, text, title, url } = payload;
+  const { type, text, title, url, lang } = payload;
+  const isZh = lang === 'zh';
+
   if (type === 'selection') {
-    return `【来源】：${title || '网页摘录'} (${url || ''})\n\n${text}\n\n`;
+    const label = isZh ? '【来源】' : '[Source]';
+    return `${label}: ${title || (isZh ? '网页摘录' : 'Web Snippet')} (${url || ''})\n\n${text}\n\n`;
   }
   if (type === 'link') {
-    return `【网页链接】：${url}\n\n`;
+    const label = isZh ? '【网页链接】' : '[Link]';
+    return `${label}: ${url}\n\n`;
   }
-  return `【网页标题】：${title || '网页'}\n【网页链接】：${url || ''}\n\n`;
+  const titleLabel = isZh ? '【网页标题】' : '[Title]';
+  const linkLabel = isZh ? '【网页链接】' : '[Link]';
+  return `${titleLabel}: ${title || (isZh ? '网页' : 'Page')}\n${linkLabel}: ${url || ''}\n\n`;
 }
 
 function createBridgeServer() {

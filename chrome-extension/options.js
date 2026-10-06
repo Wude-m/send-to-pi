@@ -10,7 +10,7 @@ function saveOptions() {
   const port = parseInt(document.getElementById('bridgePort').value, 10) || DEFAULT_PORT;
   chrome.storage.sync.set({ bridgePort: port }, () => {
     const status = document.getElementById('status');
-    status.textContent = '✅ 设置已保存！';
+    status.textContent = '✅ Settings saved!';
     setTimeout(() => {
       status.textContent = '';
     }, 2000);

@@ -91,20 +91,20 @@ npm start
 ### Step 3: Load the Chrome Extension
 1. Open Google Chrome or Microsoft Edge and navigate to `chrome://extensions/`.
 2. Toggle on **Developer mode** in the top-right corner.
-3. Click **Load unpacked** (加载已解压的扩展程序) and select the `chrome-extension` folder from this repository.
+3. Click **Load unpacked** and select the `chrome-extension` folder from this repository.
 4. You're all set!
 
 ---
 
 ## ⌨️ How to Use
 
-1. **Send Selected Text**: Highlight code or text on any webpage ➔ Right-click ➔ Choose `🚀 发送选中内容给 Pi`.
-2. **Send Whole Page Link & Title**: Right-click anywhere on the page ➔ Choose `🚀 发送当前网页给 Pi`.
-3. **Send Hyperlink**: Right-click any link ➔ Choose `🚀 发送此链接给 Pi`.
+1. **Send Selected Text**: Highlight code or text on any webpage ➔ Right-click ➔ Choose `🚀 Send Selection to Pi`.
+2. **Send Whole Page Link & Title**: Right-click anywhere on the page ➔ Choose `🚀 Send Current Page to Pi`.
+3. **Send Hyperlink**: Right-click any link ➔ Choose `🚀 Send Link to Pi`.
 
 The formatted context will immediately appear at your terminal cursor:
 ```text
-【来源】：GitHub - earendil-works/pi-coding-agent (https://github.com/...)
+[Source]: GitHub - earendil-works/pi-coding-agent (https://github.com/...)
 
 Here is the code snippet or issue description...
 _ [Cursor waits here for your instructions]
