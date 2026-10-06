@@ -4,6 +4,7 @@
 
 > Seamlessly bridge your web browser to the [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent). Send snippets, articles, or links directly into your Pi terminal prompt with one right-click.
 
+[![npm version](https://img.shields.io/npm/v/send-to-pi.svg)](https://www.npmjs.com/package/send-to-pi)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/Node.js-%3E%3D16-brightgreen.svg)](https://nodejs.org/)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-orange.svg)]()
@@ -62,10 +63,10 @@ sequenceDiagram
 You can install it directly via Pi's built-in package manager:
 
 ```bash
-pi install git:github.com/Wude-m/send-to-pi
+pi install npm:send-to-pi
 ```
 
-*(Alternatively, you can manually copy `pi-extension/index.ts` into your `~/.pi/agent/extensions/send-to-pi.ts`)*
+*(Or from GitHub: `pi install git:github.com/Wude-m/send-to-pi`)*
 
 ### Step 2: Start the Bridge Daemon
 The bridge daemon runs in the background on your machine:

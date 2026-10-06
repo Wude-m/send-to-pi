@@ -4,6 +4,7 @@
 
 > 让你的网页浏览器与 [Pi 终端编程助手](https://github.com/earendil-works/pi-coding-agent) 无缝打通。在网页上选中文字、链接或页面，一键右键直达终端输入框，自动排版并预填上下文。
 
+[![npm version](https://img.shields.io/npm/v/send-to-pi.svg)](https://www.npmjs.com/package/send-to-pi)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/Node.js-%3E%3D16-brightgreen.svg)](https://nodejs.org/)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-orange.svg)]()
@@ -62,10 +63,10 @@ sequenceDiagram
 你可以直接使用 Pi 内置的包管理器一键安装：
 
 ```bash
-pi install git:github.com/Wude-m/send-to-pi
+pi install npm:send-to-pi
 ```
 
-*(或者，你也可以手动将 `pi-extension/index.ts` 复制到本机 `~/.pi/agent/extensions/send-to-pi.ts`)*
+*(或者通过 GitHub 安装: `pi install git:github.com/Wude-m/send-to-pi`)*
 
 ### 第二步：启动 Bridge 守护进程
 调度守护进程负责在后台监听浏览器请求并在需要时唤醒终端：
