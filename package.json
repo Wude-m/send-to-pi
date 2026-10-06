@@ -12,6 +12,8 @@
     "test": "node server/bin/send-to-pi.js --help"
   },
   "keywords": [
+    "pi-package",
+    "pi-extension",
     "pi",
     "pi-coding-agent",
     "chrome-extension",
@@ -19,6 +21,14 @@
     "ai-agent",
     "developer-tools"
   ],
+  "pi": {
+    "extensions": [
+      "./pi-extension/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
   "author": "Wude (Wude-m)",
   "repository": {
     "type": "git",

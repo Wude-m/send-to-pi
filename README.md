@@ -59,19 +59,13 @@ sequenceDiagram
 ## 📦 Quick Start (3 Steps)
 
 ### Step 1: Install the Pi Extension
-Copy the extension to your local Pi extensions directory:
+You can install it directly via Pi's built-in package manager:
 
-**macOS / Linux:**
 ```bash
-mkdir -p ~/.pi/agent/extensions
-curl -fsSL https://raw.githubusercontent.com/Wude-m/send-to-pi/main/pi-extension/index.ts -o ~/.pi/agent/extensions/send-to-pi.ts
+pi install git:github.com/Wude-m/send-to-pi
 ```
 
-**Windows (PowerShell):**
-```powershell
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.pi\agent\extensions"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Wude-m/send-to-pi/main/pi-extension/index.ts" -OutFile "$env:USERPROFILE\.pi\agent\extensions\send-to-pi.ts"
-```
+*(Alternatively, you can manually copy `pi-extension/index.ts` into your `~/.pi/agent/extensions/send-to-pi.ts`)*
 
 ### Step 2: Start the Bridge Daemon
 The bridge daemon runs in the background on your machine:

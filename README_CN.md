@@ -59,19 +59,13 @@ sequenceDiagram
 ## 📦 三步快速上手
 
 ### 第一步：安装 Pi 原生扩展
-将扩展文件复制到你本机的 Pi 扩展目录：
+你可以直接使用 Pi 内置的包管理器一键安装：
 
-**macOS / Linux:**
 ```bash
-mkdir -p ~/.pi/agent/extensions
-curl -fsSL https://raw.githubusercontent.com/Wude-m/send-to-pi/main/pi-extension/index.ts -o ~/.pi/agent/extensions/send-to-pi.ts
+pi install git:github.com/Wude-m/send-to-pi
 ```
 
-**Windows (PowerShell):**
-```powershell
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.pi\agent\extensions"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Wude-m/send-to-pi/main/pi-extension/index.ts" -OutFile "$env:USERPROFILE\.pi\agent\extensions\send-to-pi.ts"
-```
+*(或者，你也可以手动将 `pi-extension/index.ts` 复制到本机 `~/.pi/agent/extensions/send-to-pi.ts`)*
 
 ### 第二步：启动 Bridge 守护进程
 调度守护进程负责在后台监听浏览器请求并在需要时唤醒终端：
