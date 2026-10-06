@@ -86,10 +86,16 @@ npm start
 > - **Windows 用户**：双击 `scripts/start-win.vbs` 即可无黑框后台静默运行。
 
 ### 第三步：加载 Chrome 浏览器扩展
-1. 打开 Chrome 或 Edge 浏览器，在地址栏输入 `chrome://extensions/`；
+你完全不需要手动去翻找目录，只需在终端运行：
+
+```bash
+npx send-to-pi extension
+```
+
+该命令会打印出扩展目录并**自动在系统文件管理器中打开该文件夹**。然后：
+1. 打开 Chrome 或 Edge 浏览器，访问 `chrome://extensions/`；
 2. 开启右上角的 **“开发者模式”**（Developer mode）；
-3. 点击左上角的 **“加载已解压的扩展程序”**（Load unpacked）；
-4. 选择本仓库的 `chrome-extension` 目录即可！
+3. 点击左上角的 **“加载已解压的扩展程序”**（Load unpacked），选择刚刚为你弹出的文件夹即可！
 
 ---
 

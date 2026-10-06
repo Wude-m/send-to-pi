@@ -84,9 +84,16 @@ npm start
 *(Tip: macOS users can run `bash scripts/start-mac.sh` to run in background. Windows users can double-click `scripts/start-win.vbs` for silent background execution.)*
 
 ### Step 3: Load the Chrome Extension
+You don't need to hunt for the folder manually! Just run:
+
+```bash
+npx send-to-pi extension
+```
+
+This will print the exact folder path and **automatically open the extension directory in your file manager**. Then:
 1. Open Google Chrome or Microsoft Edge and navigate to `chrome://extensions/`.
 2. Toggle on **Developer mode** in the top-right corner.
-3. Click **Load unpacked** and select the `chrome-extension` folder from this repository.
+3. Click **Load unpacked** and select the folder that just opened.
 4. You're all set!
 
 ---

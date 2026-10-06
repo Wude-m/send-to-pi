@@ -48,6 +48,28 @@ if (command === 'status' || command === 'check') {
   });
 
   req.end();
+} else if (command === 'extension' || command === 'ext' || command === 'open-extension') {
+  const path = require('path');
+  const { spawn } = require('child_process');
+  const extDir = path.resolve(__dirname, '../../chrome-extension');
+
+  console.log(`\n📦 Chrome Extension folder:`);
+  console.log(`   ${extDir}\n`);
+  console.log(`👉 Quick steps to load into Chrome / Edge:`);
+  console.log(`   1. Open chrome://extensions/ in your browser`);
+  console.log(`   2. Toggle on "Developer mode" in the top-right corner`);
+  console.log(`   3. Click "Load unpacked" and select the folder opened above!\n`);
+
+  try {
+    if (process.platform === 'win32') {
+      spawn('explorer.exe', [extDir], { detached: true, stdio: 'ignore' }).unref();
+    } else if (process.platform === 'darwin') {
+      spawn('open', [extDir], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      spawn('xdg-open', [extDir], { detached: true, stdio: 'ignore' }).unref();
+    }
+  } catch (_e) {}
+  process.exit(0);
 } else if (command === 'help' || command === '--help' || command === '-h') {
   console.log(`
 Usage: send-to-pi [command] [options]
@@ -55,6 +77,7 @@ Usage: send-to-pi [command] [options]
 Commands:
   start          Start the bridge daemon (default)
   status         Check if the bridge daemon is running
+  extension      Open the Chrome extension folder to load in browser
   help           Show this help message
 
 Options via Environment Variables:
