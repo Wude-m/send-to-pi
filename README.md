@@ -64,13 +64,13 @@ Copy the extension to your local Pi extensions directory:
 **macOS / Linux:**
 ```bash
 mkdir -p ~/.pi/agent/extensions
-curl -fsSL https://raw.githubusercontent.com/JIan5090/send-to-pi/main/pi-extension/index.ts -o ~/.pi/agent/extensions/send-to-pi.ts
+curl -fsSL https://raw.githubusercontent.com/Wude-m/send-to-pi/main/pi-extension/index.ts -o ~/.pi/agent/extensions/send-to-pi.ts
 ```
 
 **Windows (PowerShell):**
 ```powershell
 New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.pi\agent\extensions"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JIan5090/send-to-pi/main/pi-extension/index.ts" -OutFile "$env:USERPROFILE\.pi\agent\extensions\send-to-pi.ts"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Wude-m/send-to-pi/main/pi-extension/index.ts" -OutFile "$env:USERPROFILE\.pi\agent\extensions\send-to-pi.ts"
 ```
 
 ### Step 2: Start the Bridge Daemon
@@ -81,7 +81,7 @@ The bridge daemon runs in the background on your machine:
 npx send-to-pi start
 
 # Or clone and run
-git clone https://github.com/JIan5090/send-to-pi.git
+git clone https://github.com/Wude-m/send-to-pi.git
 cd send-to-pi
 npm start
 ```
