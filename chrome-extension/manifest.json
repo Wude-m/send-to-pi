@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Send to Pi",
-  "version": "1.0.0",
+  "name": "Send to Pi (发送给 Pi)",
+  "version": "1.0.2",
   "description": "Send webpage snippets, URLs, or articles directly to your local Pi coding agent terminal.",
   "permissions": [
     "contextMenus",

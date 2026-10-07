@@ -36,22 +36,24 @@ async function getBridgeUrl() {
 
 // 注册右键菜单
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "send_selection",
-    title: i18n.menuSelection,
-    contexts: ["selection"],
-  });
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "send_selection",
+      title: i18n.menuSelection,
+      contexts: ["selection"],
+    });
 
-  chrome.contextMenus.create({
-    id: "send_page",
-    title: i18n.menuPage,
-    contexts: ["page"],
-  });
+    chrome.contextMenus.create({
+      id: "send_page",
+      title: i18n.menuPage,
+      contexts: ["page"],
+    });
 
-  chrome.contextMenus.create({
-    id: "send_link",
-    title: i18n.menuLink,
-    contexts: ["link"],
+    chrome.contextMenus.create({
+      id: "send_link",
+      title: i18n.menuLink,
+      contexts: ["link"],
+    });
   });
 });
 
