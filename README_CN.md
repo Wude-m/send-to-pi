@@ -2,7 +2,7 @@
 
 **简体中文** | [**English**](./README.md)
 
-> 让你的网页浏览器与 [Pi 终端编程助手](https://github.com/earendil-works/pi-coding-agent) 无缝打通。在网页上选中文字、链接或页面，一键右键直达终端输入框，自动排版并预填上下文。
+> 让你的网页浏览器与 [Pi 终端编程助手](https://github.com/earendil-works/pi-coding-agent) 无缝打通。在网页上选中文字、提取整页文章或捕获链接，一键直达终端输入框，自动排版并预填上下文。
 
 [![npm version](https://img.shields.io/npm/v/send-to-pi.svg)](https://www.npmjs.com/package/send-to-pi)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -19,12 +19,16 @@
 1. 鼠标划词复制
 2. Alt+Tab 切到终端窗口
 3. 粘贴进输入框
-4. 手动打字写“请参考以上网页/报错...”
+4. 代码缩进变形、表格散架、手动打字写“请参考以上网页/报错...”
 
 **有了 `send-to-pi` 之后：**
-在任何网页上划选文字、右键链接或页面 ➔ **内容自动携带网页标题与来源 URL，毫秒级预填进 Pi 终端输入框**。
+在任何网页上划选文字、提取文章或点击链接 ➔ **内容自动携带网页标题与来源 URL，毫秒级预填进 Pi 终端输入框**。
 - 🎯 **Prefill 预填模式（绝不自作主张回车）**：内容送到输入框后，光标停留在末尾，你可以从容补充具体指令（如“请根据这段代码重构...”），最后按回车自主发送。
-- ⚡ **冷启动自动唤醒终端**：就算你当前没有开着 Pi 终端，右键发送也会自动为你拉起终端、运行 `pi`，并在会话初始化完成后自动填入内容！
+- 📝 **HTML 智能转 Markdown（保留代码与表格格式）**：划词内容自动识别并还原 `<pre><code>` 语言/缩进、`<table>` 表格、列表、引用及超链接；页面受限时自动平滑降级。
+- 📖 **整页正文提取（Readability 模式）**：右键点击“发送精简文章”，自动剔除页眉、页脚、侧边栏及广告噪声，将干净的正文转为 Markdown 一键交付，终端无需再额外发起网络请求。
+- ⌨️ **快捷键一键直达**：支持全局划选快捷键（默认 <kbd>Alt+Shift+S</kbd> / Mac <kbd>Cmd+Shift+S</kbd>），无需右键鼠标二次点击。
+- 🔄 **动态端口发现与防串台**：Pi 会话自动在 18091~18095 范围内探测可用端口，并通过 `~/.pi/send-to-pi.json` 维护活跃实例，多窗口共存不冲突。
+- ⚡ **冷启动自动唤醒终端**：若当前未运行 Pi，自动为你拉起终端、启动 `pi`，并在会话初始化完成后自动填入内容！
 - 🍏 **全平台终端适配**：原生支持 **macOS**（Terminal.app、iTerm2、Ghostty、WezTerm 等）、**Windows**（Windows Terminal、PowerShell）以及 **Linux**。
 - 🔒 **纯本地与隐私安全**：全链路通过本地环回地址 `127.0.0.1` 传输，无云端中转，零数据收集。
 
@@ -36,14 +40,15 @@
 sequenceDiagram
     autonumber
     actor User as 开发者
-    participant Browser as Chrome 浏览器扩展
-    participant Bridge as Bridge 调度守护进程 (:18090)
-    participant Pi as Pi Agent 终端会话 (:18091)
+    participant Browser as Chrome 扩展
+    participant Bridge as Bridge 守护进程 (:18090)
+    participant Pi as 活跃 Pi 终端 (18091~18095)
 
-    User->>Browser: 右键菜单点击 "发送给 Pi"
-    Browser->>Bridge: HTTP POST /send (正文、URL、标题)
-    alt Pi 正在运行
-        Bridge->>Pi: 转发至 127.0.0.1:18091/receive
+    User->>Browser: 划选/文章提取 (右键或快捷键)
+    Browser->>Bridge: HTTP POST /send (Markdown、URL、标题)
+    alt 存在活跃 Pi 会话
+        Bridge->>Bridge: 读取 ~/.pi/send-to-pi.json 或端口探测
+        Bridge->>Pi: 转发至对应端口 /receive
         Pi->>Pi: ctx.ui.setEditorText() (预填到输入框)
         Bridge-->>Browser: 200 OK (已填入输入框)
     else Pi 未运行 (冷启动模式)
@@ -67,6 +72,8 @@ pi install npm:send-to-pi
 ```
 
 *(或者通过 GitHub 安装: `pi install git:github.com/Wude-m/send-to-pi`)*
+
+### 第一步启动后，扩展会自动随 Pi 启动并在可用端口（18091~18095）监听接收。
 
 ### 第二步：启动 Bridge 守护进程
 调度守护进程负责在后台监听浏览器请求并在需要时唤醒终端：
@@ -101,15 +108,22 @@ npx send-to-pi extension
 
 ## ⌨️ 日常使用演示
 
-1. **发送划选内容**：网页上鼠标选中任何代码或文本 ➔ 右键 ➔ 点击 `🚀 发送选中内容给 Pi`；
-2. **发送整个网页**：在页面空白处 ➔ 右键 ➔ 点击 `🚀 发送当前网页给 Pi`；
-3. **发送超链接**：在任意链接上 ➔ 右键 ➔ 点击 `🚀 发送此链接给 Pi`。
+1. **发送划选内容（Markdown 格式）**：
+   - 网页上鼠标选中任何代码或文本 ➔ 右键 ➔ 点击 `🚀 发送选中内容给 Pi`；
+   - 或划选后直接按下快捷键 <kbd>Alt+Shift+S</kbd>（Mac: <kbd>Cmd+Shift+S</kbd>）。
+2. **发送精简正文（Readability 模式）**：
+   - 在网页任意空白处 ➔ 右键 ➔ 点击 `🚀 发送精简文章给 Pi`；
+   - 自动解析正文结构转为 Markdown，剔除无关导航和广告。
+3. **发送超链接**：
+   - 在任意超链接上 ➔ 右键 ➔ 点击 `🚀 发送此链接给 Pi`。
 
-终端输入框中会立即呈现带有来源标题与 URL 的整洁内容：
+终端输入框中会立即呈现带有来源标题与 URL 的整洁 Markdown 内容：
 ```text
 【来源】：GitHub - earendil-works/pi-coding-agent (https://github.com/...)
 
-这里是选中的代码片段或技术文档内容...
+```typescript
+export default function (pi: ExtensionAPI) { ... }
+```
 _ [光标停在此处，等待你补充提示词]
 ```
 
@@ -122,7 +136,7 @@ _ [光标停在此处，等待你补充提示词]
 | 环境变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |
 | `PI_BRIDGE_PORT` | `18090` | Bridge 调度进程监听的端口 |
-| `PI_INTERNAL_PORT` | `18091` | 活跃 Pi 会话内部接收端口 |
+| `PI_INTERNAL_PORT` | `18091` | 活跃 Pi 会话内部起始端口（自动探测 18091~18095） |
 | `PI_WORKDIR` | 当前目录 | 自动唤醒 Pi 时默认进入的工作目录 |
 | `PI_TERMINAL` | 自动探测 | macOS/Linux 指定偏好终端（如 `iterm2`, `ghostty`, `terminal`, `alacritty`） |
 

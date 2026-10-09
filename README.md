@@ -2,7 +2,7 @@
 
 [**简体中文**](./README_CN.md) | **English**
 
-> Seamlessly bridge your web browser to the [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent). Send snippets, articles, or links directly into your Pi terminal prompt with one right-click.
+> Seamlessly bridge your web browser to the [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent). Send snippets, articles, or links directly into your Pi terminal prompt with one click or keyboard shortcut.
 
 [![npm version](https://img.shields.io/npm/v/send-to-pi.svg)](https://www.npmjs.com/package/send-to-pi)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -19,11 +19,15 @@ Traditionally, sending webpage context to an agent means:
 1. Selecting text
 2. Switching windows
 3. Pasting into the terminal
-4. Typing instructions
+4. Dealing with broken indentation or destroyed tables, then typing instructions manually
 
 **With `send-to-pi`:**
-Right-click on any selected text, link, or page ➔ **The text is instantly prefilled into your Pi terminal input box**, with the source title & URL cleanly formatted.
+Right-click on any selected text, link, or page ➔ **The text is instantly formatted into Markdown and prefilled into your Pi terminal input box**, with the source title & URL cleanly formatted.
 - 🎯 **Prefill Mode (No Auto-Submit)**: The prompt is populated into the editor without auto-submitting. You can review, refine, or append instructions before pressing <kbd>Enter</kbd>.
+- 📝 **HTML to Markdown Preservation**: Selection captures `<pre><code>` blocks, language tags, indentation, `<table>` grids, lists, quotes, and links without loss. Falls back gracefully when restricted.
+- 📖 **Clean Article Extraction (Readability Mode)**: Extract clean article markdown stripped of navigation, footers, sidebars, and ads. Pi gets immediate full-text context without extra fetching.
+- ⌨️ **Keyboard Shortcut**: Instant delivery with <kbd>Alt+Shift+S</kbd> (<kbd>Cmd+Shift+S</kbd> on macOS) right after highlighting text or code.
+- 🔄 **Dynamic Port Discovery & Anti-Collision**: Pi sessions automatically probe 18091~18095 and track the most active session in `~/.pi/send-to-pi.json`.
 - ⚡ **Cold-Start Auto-Wake**: If Pi isn't running, it automatically opens your terminal, starts Pi, and populates the text once the session boots up.
 - 🍏 **True Cross-Platform**: Native terminal launch support for **macOS** (Terminal.app, iTerm2, Ghostty, WezTerm), **Windows** (Windows Terminal, PowerShell), and **Linux**.
 - 🔒 **100% Local & Private**: All communication happens via `127.0.0.1`. No cloud proxy, no data logging.
@@ -38,12 +42,13 @@ sequenceDiagram
     actor User as Developer
     participant Browser as Chrome Extension
     participant Bridge as Bridge Daemon (:18090)
-    participant Pi as Pi Agent Session (:18091)
+    participant Pi as Active Pi Session (18091~18095)
 
-    User->>Browser: Right-click & "Send to Pi"
-    Browser->>Bridge: HTTP POST /send (Snippet, URL, Title)
+    User->>Browser: Select or Extract Article (Menu / Shortcut)
+    Browser->>Bridge: HTTP POST /send (Markdown, URL, Title)
     alt Active Pi Running
-        Bridge->>Pi: Forward to 127.0.0.1:18091/receive
+        Bridge->>Bridge: Read ~/.pi/send-to-pi.json or probe ports
+        Bridge->>Pi: Forward to port /receive
         Pi->>Pi: ctx.ui.setEditorText() (Prefill)
         Bridge-->>Browser: 200 OK (Prefilled)
     else Pi Not Running (Cold Start)
@@ -100,15 +105,22 @@ This will print the exact folder path and **automatically open the extension dir
 
 ## ⌨️ How to Use
 
-1. **Send Selected Text**: Highlight code or text on any webpage ➔ Right-click ➔ Choose `🚀 Send Selection to Pi`.
-2. **Send Whole Page Link & Title**: Right-click anywhere on the page ➔ Choose `🚀 Send Current Page to Pi`.
-3. **Send Hyperlink**: Right-click any link ➔ Choose `🚀 Send Link to Pi`.
+1. **Send Selected Text / Code (Markdown)**:
+   - Highlight text or code ➔ Right-click ➔ Choose `🚀 Send Selection to Pi`;
+   - Or press shortcut <kbd>Alt+Shift+S</kbd> (<kbd>Cmd+Shift+S</kbd> on macOS).
+2. **Send Clean Article (Readability Mode)**:
+   - Right-click anywhere on the webpage ➔ Choose `🚀 Send Clean Article to Pi`.
+   - The article body is parsed into clean Markdown without ads or navigation menus.
+3. **Send Hyperlink**:
+   - Right-click any link ➔ Choose `🚀 Send Link to Pi`.
 
 The formatted context will immediately appear at your terminal cursor:
 ```text
 [Source]: GitHub - earendil-works/pi-coding-agent (https://github.com/...)
 
-Here is the code snippet or issue description...
+```typescript
+export default function (pi: ExtensionAPI) { ... }
+```
 _ [Cursor waits here for your instructions]
 ```
 
@@ -121,7 +133,7 @@ You can configure options via environment variables when launching the daemon:
 | Environment Variable | Default | Description |
 | :--- | :--- | :--- |
 | `PI_BRIDGE_PORT` | `18090` | Port listened by the Bridge Daemon |
-| `PI_INTERNAL_PORT` | `18091` | Internal port used by the active Pi session |
+| `PI_INTERNAL_PORT` | `18091` | Starting port for active Pi sessions (probes 18091~18095) |
 | `PI_WORKDIR` | Current directory | Default working directory when auto-launching Pi |
 | `PI_TERMINAL` | Auto-detect | Preferred terminal: `iterm2`, `ghostty`, `terminal`, `wezterm`, `alacritty` |
 

@@ -1,13 +1,24 @@
 {
   "manifest_version": 3,
   "name": "Send to Pi (发送给 Pi)",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Send webpage snippets, URLs, or articles directly to your local Pi coding agent terminal.",
   "permissions": [
     "contextMenus",
     "notifications",
-    "storage"
+    "storage",
+    "scripting",
+    "activeTab"
   ],
+  "commands": {
+    "send-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Send selected text/code to Pi"
+    }
+  },
   "host_permissions": [
     "http://127.0.0.1:*/*"
   ],

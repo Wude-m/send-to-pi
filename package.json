@@ -1,6 +1,6 @@
 {
   "name": "send-to-pi",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Send webpage snippets, URLs, or articles directly to your local Pi coding agent terminal.",
   "main": "server/src/index.js",
   "bin": {
