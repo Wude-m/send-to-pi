@@ -2,17 +2,19 @@
  * send-to-pi Bridge Daemon
  *
  * Listens on: 127.0.0.1:18090 (receives Chrome extension requests)
- * Dynamically discovers active Pi sessions (18091 ~ 18095 or ~/.pi/send-to-pi.json)
+ * Dynamically discovers active Pi sessions (18091 ~ 18095 or ~/.pi/send-to-pi/sessions.json)
  */
 
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
 const {
   BRIDGE_PORT,
   PI_INTERNAL_PORT,
   PI_INTERNAL_PORT_START,
   PI_INTERNAL_PORT_END,
   ACTIVE_SESSION_FILE,
+  SESSION_REGISTRY_FILE,
   PENDING_FILE,
   getWorkDir,
 } = require('./config');
@@ -55,24 +57,79 @@ function checkPiHealth(port) {
   });
 }
 
+function readSessionRegistry() {
+  if (!fs.existsSync(SESSION_REGISTRY_FILE)) return null;
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(SESSION_REGISTRY_FILE, 'utf8'));
+    const sessions = Array.isArray(parsed) ? parsed : parsed && parsed.sessions;
+    if (!Array.isArray(sessions)) return null;
+    return sessions.filter((session) => session && Number.isInteger(Number(session.port)));
+  } catch (_e) {
+    return null;
+  }
+}
+
+function writeSessionRegistry(sessions) {
+  try {
+    const directory = path.dirname(SESSION_REGISTRY_FILE);
+    fs.mkdirSync(directory, { recursive: true });
+    const temporaryFile = `${SESSION_REGISTRY_FILE}.tmp-${process.pid}`;
+    fs.writeFileSync(
+      temporaryFile,
+      JSON.stringify({ version: 1, sessions }, null, 2),
+      'utf8'
+    );
+    fs.renameSync(temporaryFile, SESSION_REGISTRY_FILE);
+  } catch (_e) {
+    // Registry cleanup is best effort. The legacy file and port scan remain available.
+  }
+}
+
 async function findActivePi() {
-  // 1. 优先读取 ~/.pi/send-to-pi.json 活跃单例信息
+  // 1. 优先读取会话注册表，并按最近活跃时间路由。
+  const registeredSessions = readSessionRegistry();
+  if (registeredSessions) {
+    const candidates = [...registeredSessions].sort(
+      (a, b) => Number(b.activeAt || b.updatedAt || 0) - Number(a.activeAt || a.updatedAt || 0)
+    );
+    const activeSessions = [];
+    let selected = null;
+
+    for (const session of candidates) {
+      const port = Number(session.port);
+      const health = await checkPiHealth(port);
+      if (!health.ok) continue;
+
+      const activeSession = { ...session, ...(health.info || {}), port };
+      activeSessions.push(activeSession);
+      if (!selected) {
+        selected = { port, source: 'session-registry', session: activeSession };
+      }
+    }
+
+    if (activeSessions.length !== registeredSessions.length) {
+      writeSessionRegistry(activeSessions);
+    }
+    if (selected) return selected;
+  }
+
+  // 2. 兼容旧版 ~/.pi/send-to-pi.json 活跃单例信息。
   if (fs.existsSync(ACTIVE_SESSION_FILE)) {
     try {
-      const raw = fs.readFileSync(ACTIVE_SESSION_FILE, 'utf8');
-      const session = JSON.parse(raw);
+      const session = JSON.parse(fs.readFileSync(ACTIVE_SESSION_FILE, 'utf8'));
       if (session && session.port) {
-        const health = await checkPiHealth(session.port);
+        const health = await checkPiHealth(Number(session.port));
         if (health.ok) {
-          return { port: session.port, source: 'session-file', session };
+          return { port: Number(session.port), source: 'session-file', session };
         }
       }
     } catch (_e) {
-      // 忽略文件解析错误，继续范围扫描
+      // 忽略文件解析错误，继续范围扫描。
     }
   }
 
-  // 2. 备用兜底：顺序探测端口范围 (18091 ~ 18095)
+  // 3. 备用兜底：顺序探测端口范围 (18091 ~ 18095)。
   for (let port = PI_INTERNAL_PORT_START; port <= PI_INTERNAL_PORT_END; port++) {
     const health = await checkPiHealth(port);
     if (health.ok) {
@@ -93,7 +150,7 @@ function forwardToPi(port, content) {
         path: '/receive',
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
           'Content-Length': Buffer.byteLength(data),
         },
         timeout: 1500,
@@ -169,12 +226,13 @@ function createBridgeServer() {
     }
 
     if (req.method === 'POST' && req.url === '/send') {
-      let body = '';
+      const chunks = [];
       req.on('data', (chunk) => {
-        body += chunk;
+        chunks.push(chunk);
       });
 
       req.on('end', async () => {
+        const body = Buffer.concat(chunks).toString('utf8');
         try {
           const payload = JSON.parse(body || '{}');
           const content = formatContent(payload);

@@ -25,9 +25,9 @@ Traditionally, sending webpage context to an agent means:
 Right-click on any selected text, link, or page ➔ **The text is instantly formatted into Markdown and prefilled into your Pi terminal input box**, with the source title & URL cleanly formatted.
 - 🎯 **Prefill Mode (No Auto-Submit)**: The prompt is populated into the editor without auto-submitting. You can review, refine, or append instructions before pressing <kbd>Enter</kbd>.
 - 📝 **HTML to Markdown Preservation**: Selection captures `<pre><code>` blocks, language tags, indentation, `<table>` grids, lists, quotes, and links without loss. Falls back gracefully when restricted.
-- 📖 **Clean Article Extraction (Readability Mode)**: Extract clean article markdown stripped of navigation, footers, sidebars, and ads. Pi gets immediate full-text context without extra fetching.
+- 📖 **Clean Article Extraction (Readability Mode)**: Extract clean article markdown stripped of navigation, footers, sidebars, and ads. X/Twitter pages target the main tweet/article instead of scanning the entire body, then fall back to title and link.
 - ⌨️ **Keyboard Shortcut**: Instant delivery with <kbd>Alt+Shift+S</kbd> (<kbd>Cmd+Shift+S</kbd> on macOS) right after highlighting text or code.
-- 🔄 **Dynamic Port Discovery & Anti-Collision**: Pi sessions automatically probe 18091~18095 and track the most active session in `~/.pi/send-to-pi.json`.
+- 🔄 **Dynamic Port Discovery & Session Routing**: Pi sessions probe 18091~18095 and register in `~/.pi/send-to-pi/sessions.json`. The Bridge routes to the most recent healthy session and keeps the legacy `~/.pi/send-to-pi.json` format compatible.
 - ⚡ **Cold-Start Auto-Wake**: If Pi isn't running, it automatically opens your terminal, starts Pi, and populates the text once the session boots up.
 - 🍏 **True Cross-Platform**: Native terminal launch support for **macOS** (Terminal.app, iTerm2, Ghostty, WezTerm), **Windows** (Windows Terminal, PowerShell), and **Linux**.
 - 🔒 **100% Local & Private**: All communication happens via `127.0.0.1`. No cloud proxy, no data logging.
@@ -47,7 +47,8 @@ sequenceDiagram
     User->>Browser: Select or Extract Article (Menu / Shortcut)
     Browser->>Bridge: HTTP POST /send (Markdown, URL, Title)
     alt Active Pi Running
-        Bridge->>Bridge: Read ~/.pi/send-to-pi.json or probe ports
+        Bridge->>Bridge: Read and clean ~/.pi/send-to-pi/sessions.json
+        Bridge->>Bridge: Fall back to ~/.pi/send-to-pi.json or probe ports
         Bridge->>Pi: Forward to port /receive
         Pi->>Pi: ctx.ui.setEditorText() (Prefill)
         Bridge-->>Browser: 200 OK (Prefilled)
@@ -143,6 +144,13 @@ PI_TERMINAL=ghostty PI_WORKDIR=~/mycode npx send-to-pi start
 ```
 
 ---
+
+## 🆕 v1.2.0 Changes
+
+- Fixed X/Twitter article extraction without reading the full page body.
+- Preserved selection and link sending modes.
+- Added multi-session registry and recent healthy-session routing.
+- Added `activeAt`, `terminal`, and `window` session metadata for future terminal routing.
 
 ## 🤝 Contributing
 

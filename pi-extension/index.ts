@@ -25,6 +25,18 @@ function getPiHomeDir(): string {
   return dir;
 }
 
+function getSendToPiDir(): string {
+  const dir = path.join(getPiHomeDir(), "send-to-pi");
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {}
+  return dir;
+}
+
+function getSessionRegistryFilePath(): string {
+  return path.join(getSendToPiDir(), "sessions.json");
+}
+
 function getActiveSessionFilePath(): string {
   return path.join(getPiHomeDir(), "send-to-pi.json");
 }
@@ -37,28 +49,82 @@ function getPendingFilePaths(): string[] {
   ];
 }
 
-function recordActiveSession(port: number, workDir: string) {
+type SessionRecord = {
+  id: string;
+  pid: number;
+  port: number;
+  workdir: string;
+  activeAt: number;
+  startedAt: number;
+  updatedAt: number;
+  terminal: string | null;
+  window: string | null;
+};
+
+function readSessionRecords(): SessionRecord[] {
   try {
-    const sessionFile = getActiveSessionFilePath();
-    const data = {
-      pid: process.pid,
-      port,
-      workdir: workDir,
-      updatedAt: Date.now(),
-    };
-    fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2), "utf8");
-  } catch (err: any) {
-    console.error("[SendToPi] Failed to write active session file:", err.message);
+    const registryFile = getSessionRegistryFilePath();
+    if (!fs.existsSync(registryFile)) return [];
+    const parsed = JSON.parse(fs.readFileSync(registryFile, "utf8"));
+    const sessions = Array.isArray(parsed) ? parsed : parsed?.sessions;
+    return Array.isArray(sessions) ? sessions : [];
+  } catch {
+    return [];
   }
 }
 
-function clearActiveSession() {
+function writeSessionRecords(sessions: SessionRecord[]) {
+  const registryFile = getSessionRegistryFilePath();
+  const temporaryFile = `${registryFile}.tmp-${process.pid}`;
+  fs.writeFileSync(
+    temporaryFile,
+    JSON.stringify({ version: 1, sessions }, null, 2),
+    "utf8"
+  );
+  fs.renameSync(temporaryFile, registryFile);
+}
+
+function recordActiveSession(port: number, workDir: string) {
   try {
+    const now = Date.now();
+    const sessionId = `${process.pid}-${port}`;
+    const existingSessions = readSessionRecords();
+    const sessions = existingSessions.filter((session) => session.id !== sessionId);
+    const data: SessionRecord = {
+      id: sessionId,
+      pid: process.pid,
+      port,
+      workdir: workDir,
+      activeAt: now,
+      startedAt: now,
+      updatedAt: now,
+      terminal: process.env.PI_TERMINAL || null,
+      window: process.env.PI_WINDOW_ID || null,
+    };
+    const previous = existingSessions.find((session) => session.id === sessionId);
+    if (previous) data.startedAt = previous.startedAt;
+    sessions.push(data);
+    writeSessionRecords(sessions);
+
+    // Keep the pre-1.2.0 single-session file for older Bridge versions.
+    fs.writeFileSync(getActiveSessionFilePath(), JSON.stringify(data, null, 2), "utf8");
+  } catch (err: any) {
+    console.error("[SendToPi] Failed to write session registry:", err.message);
+  }
+}
+
+function clearActiveSession(port: number | null) {
+  try {
+    const sessionId = port === null ? null : `${process.pid}-${port}`;
+    const sessions = readSessionRecords().filter(
+      (session) => session.id !== sessionId && !(session.pid === process.pid && session.port === port)
+    );
+    writeSessionRecords(sessions);
+
     const sessionFile = getActiveSessionFilePath();
     if (fs.existsSync(sessionFile)) {
-      const content = fs.readFileSync(sessionFile, "utf8");
-      const parsed = JSON.parse(content);
-      if (parsed.pid === process.pid) {
+      const parsed = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+      if (parsed.pid === process.pid && (port === null || parsed.port === port)) {
         fs.unlinkSync(sessionFile);
       }
     }
@@ -114,13 +180,14 @@ export default function (pi: ExtensionAPI) {
         }
 
         if (req.method === "POST" && req.url === "/receive") {
-          let body = "";
+          const chunks: Buffer[] = [];
           req.on("data", (chunk) => {
-            body += chunk;
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
           });
 
           req.on("end", () => {
             try {
+              const body = Buffer.concat(chunks).toString("utf8");
               const data = JSON.parse(body || "{}");
               const { content } = data;
 
@@ -131,7 +198,7 @@ export default function (pi: ExtensionAPI) {
               // 每次成功接收更新活跃时间
               recordActiveSession(port, ctx?.cwd || process.cwd());
 
-              res.writeHead(200, { "Content-Type": "application/json" });
+              res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
               res.end(JSON.stringify({ success: true, mode: "prefilled", port }));
             } catch (err: any) {
               res.writeHead(400, { "Content-Type": "application/json" });
@@ -216,12 +283,12 @@ export default function (pi: ExtensionAPI) {
       server.close();
       server = null;
     }
-    clearActiveSession();
+    clearActiveSession(activePort);
     activeCtx = null;
     activePort = null;
   });
 
   process.on("exit", () => {
-    clearActiveSession();
+    clearActiveSession(activePort);
   });
 }

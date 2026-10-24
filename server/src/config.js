@@ -17,6 +17,14 @@ if (!fs.existsSync(piHomeDir)) {
   }
 }
 
+const SEND_TO_PI_DIR = path.join(piHomeDir, 'send-to-pi');
+try {
+  fs.mkdirSync(SEND_TO_PI_DIR, { recursive: true });
+} catch (_err) {
+  // Ignore creation failures and let callers use the legacy path or temp file.
+}
+
+const SESSION_REGISTRY_FILE = path.join(SEND_TO_PI_DIR, 'sessions.json');
 const ACTIVE_SESSION_FILE = path.join(piHomeDir, 'send-to-pi.json');
 
 const PENDING_FILE = fs.existsSync(piHomeDir)
@@ -41,6 +49,7 @@ module.exports = {
   PI_INTERNAL_PORT_START,
   PI_INTERNAL_PORT_END,
   ACTIVE_SESSION_FILE,
+  SESSION_REGISTRY_FILE,
   PENDING_FILE,
   getWorkDir,
 };

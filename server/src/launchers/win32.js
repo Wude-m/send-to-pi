@@ -2,35 +2,56 @@
  * Windows Terminal Launcher for send-to-pi
  *
  * Supports:
- * - Windows Terminal (wt.exe)
+ * - Tern Terminal (D:\Tern\tern.exe)
+ * - Windows Terminal (wt.exe fallback)
  * - PowerShell (powershell.exe fallback)
  * - Command Prompt (cmd.exe fallback)
  */
 
 const { spawn } = require('child_process');
+const fs = require('fs');
 
 function launchWin32(workDir) {
   return new Promise((resolve) => {
-    // 1. 尝试 Windows Terminal (wt.exe)
-    try {
-      const wtArgs = ['-d', workDir, 'powershell', '-NoExit', '-Command', 'pi'];
-      const child = spawn('wt.exe', wtArgs, {
-        detached: true,
-        stdio: 'ignore',
-      });
-
-      child.on('error', (_err) => {
-        // wt.exe 不存在或失败，回退到 powershell.exe
-        fallbackPowerShell(workDir, resolve);
-      });
-
-      child.unref();
-      // 在 Windows 上若成功触发 spawn 且无即时报错即视为已拉起
-      setTimeout(() => resolve({ success: true, terminal: 'Windows Terminal' }), 300);
-    } catch (_e) {
-      fallbackPowerShell(workDir, resolve);
+    // 1. 优先尝试 Tern Terminal (主力终端)
+    const ternPath = 'D:\\Tern\\tern.exe';
+    if (fs.existsSync(ternPath)) {
+      try {
+        const ternArgs = ['-e', 'powershell', '-NoExit', '-Command', `Set-Location '${workDir}'; pi`];
+        const child = spawn(ternPath, ternArgs, {
+          detached: true,
+          stdio: 'ignore',
+        });
+        child.on('error', () => fallbackWT(workDir, resolve));
+        child.unref();
+        setTimeout(() => resolve({ success: true, terminal: 'Tern' }), 300);
+        return;
+      } catch (_e) {
+        // continue
+      }
     }
+    fallbackWT(workDir, resolve);
   });
+}
+
+function fallbackWT(workDir, resolve) {
+  // 2. 回退尝试 Windows Terminal (wt.exe)
+  try {
+    const wtArgs = ['-d', workDir, 'powershell', '-NoExit', '-Command', 'pi'];
+    const child = spawn('wt.exe', wtArgs, {
+      detached: true,
+      stdio: 'ignore',
+    });
+
+    child.on('error', (_err) => {
+      fallbackPowerShell(workDir, resolve);
+    });
+
+    child.unref();
+    setTimeout(() => resolve({ success: true, terminal: 'Windows Terminal' }), 300);
+  } catch (_e) {
+    fallbackPowerShell(workDir, resolve);
+  }
 }
 
 function fallbackPowerShell(workDir, resolve) {

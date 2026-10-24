@@ -25,9 +25,9 @@
 在任何网页上划选文字、提取文章或点击链接 ➔ **内容自动携带网页标题与来源 URL，毫秒级预填进 Pi 终端输入框**。
 - 🎯 **Prefill 预填模式（绝不自作主张回车）**：内容送到输入框后，光标停留在末尾，你可以从容补充具体指令（如“请根据这段代码重构...”），最后按回车自主发送。
 - 📝 **HTML 智能转 Markdown（保留代码与表格格式）**：划词内容自动识别并还原 `<pre><code>` 语言/缩进、`<table>` 表格、列表、引用及超链接；页面受限时自动平滑降级。
-- 📖 **整页正文提取（Readability 模式）**：右键点击“发送精简文章”，自动剔除页眉、页脚、侧边栏及广告噪声，将干净的正文转为 Markdown 一键交付，终端无需再额外发起网络请求。
+- 📖 **整页正文提取（Readability 模式）**：自动剔除页眉、页脚、侧边栏及广告噪声。X/Twitter 页面只提取主 tweet/article，不读取整个 body；失败时回退为标题与链接。
 - ⌨️ **快捷键一键直达**：支持全局划选快捷键（默认 <kbd>Alt+Shift+S</kbd> / Mac <kbd>Cmd+Shift+S</kbd>），无需右键鼠标二次点击。
-- 🔄 **动态端口发现与防串台**：Pi 会话自动在 18091~18095 范围内探测可用端口，并通过 `~/.pi/send-to-pi.json` 维护活跃实例，多窗口共存不冲突。
+- 🔄 **动态端口发现与会话路由**：Pi 会话自动探测 18091~18095，并写入 `~/.pi/send-to-pi/sessions.json`。Bridge 优先路由最近的健康会话，并兼容旧版 `~/.pi/send-to-pi.json`。
 - ⚡ **冷启动自动唤醒终端**：若当前未运行 Pi，自动为你拉起终端、启动 `pi`，并在会话初始化完成后自动填入内容！
 - 🍏 **全平台终端适配**：原生支持 **macOS**（Terminal.app、iTerm2、Ghostty、WezTerm 等）、**Windows**（Windows Terminal、PowerShell）以及 **Linux**。
 - 🔒 **纯本地与隐私安全**：全链路通过本地环回地址 `127.0.0.1` 传输，无云端中转，零数据收集。
@@ -47,7 +47,8 @@ sequenceDiagram
     User->>Browser: 划选/文章提取 (右键或快捷键)
     Browser->>Bridge: HTTP POST /send (Markdown、URL、标题)
     alt 存在活跃 Pi 会话
-        Bridge->>Bridge: 读取 ~/.pi/send-to-pi.json 或端口探测
+        Bridge->>Bridge: 读取并清理 ~/.pi/send-to-pi/sessions.json
+        Bridge->>Bridge: 回退读取 ~/.pi/send-to-pi.json 或端口探测
         Bridge->>Pi: 转发至对应端口 /receive
         Pi->>Pi: ctx.ui.setEditorText() (预填到输入框)
         Bridge-->>Browser: 200 OK (已填入输入框)
@@ -146,6 +147,13 @@ PI_TERMINAL=ghostty PI_WORKDIR=~/mycode npx send-to-pi start
 ```
 
 ---
+
+## 🆕 v1.2.0 变更
+
+- 修复 X/Twitter 文章提取，避免读取整个页面 body。
+- 保留选中内容与链接发送模式。
+- 新增多 Pi 会话注册表及最近健康会话路由。
+- 注册会话预留 `activeAt`、`terminal`、`window` 字段。
 
 ## 🤝 欢迎贡献
 

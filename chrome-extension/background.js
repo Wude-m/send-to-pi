@@ -1,6 +1,6 @@
 /**
  * Send to Pi - Chrome Background Service Worker
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 
 const DEFAULT_PORT = 18090;
@@ -279,6 +279,53 @@ function inPageExtractor(mode) {
   }
 
   if (mode === "article") {
+    // X/Twitter 页面不能读取整个 body：只尝试主 tweet 或文章节点。
+    const isXTwitter = /(^|\.)((twitter|x)\.com)$/i.test(window.location.hostname);
+    if (isXTwitter) {
+      const xSelectors = [
+        'main [data-testid="twitter-article"]',
+        'main [data-testid="article"]',
+        'main article[data-testid="tweet"]',
+        '[data-testid="twitter-article"]',
+        '[data-testid="article"]',
+        'article[data-testid="tweet"]',
+        'main article',
+        'article',
+      ];
+      let mainTweet = null;
+      for (const selector of xSelectors) {
+        mainTweet = document.querySelector(selector);
+        if (mainTweet) break;
+      }
+
+      // 某些 X 版本只标记 tweetText，向上定位其所属主 article。
+      if (!mainTweet) {
+        const tweetText = document.querySelector('[data-testid="tweetText"]');
+        mainTweet = tweetText ? tweetText.closest('article') : null;
+      }
+
+      if (!mainTweet) return null;
+
+      // X 的主 article 同时包含作者栏、头像、媒体和互动按钮。
+      // 只保留正文结构，避免把整个帖子壳层发送给 Pi。
+      const cleanTweet = mainTweet.cloneNode(true);
+      [
+        '[data-testid="User-Name"]',
+        '[data-testid="User-Names"]',
+        '[data-testid="UserDescription"]',
+        '[data-testid="tweetPhoto"]',
+        '[data-testid="videoPlayer"]',
+        '[role="group"]',
+        'time',
+        'img',
+      ].forEach((selector) => {
+        cleanTweet.querySelectorAll(selector).forEach((el) => el.remove());
+      });
+
+      const xMarkdown = domToMarkdown(cleanTweet);
+      return xMarkdown || null;
+    }
+
     // Readability 简版：整页正文提取
     const clone = document.body.cloneNode(true);
 
