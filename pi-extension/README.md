@@ -1,28 +1,20 @@
 # send-to-pi: Pi Coding Agent Extension
 
-这是 `send-to-pi` 运行在 Pi coding agent 端的核心扩展。
+这是 `send-to-pi` 运行在 Pi coding agent 端的核心扩展（v1.3.0）。
 
 ## 作用
-1. 监听本地内部端口 `127.0.0.1:18091`，接收调度服务（Bridge Daemon）转发过来的网页摘录；
-2. 将每个 Pi 会话注册到 `~/.pi/send-to-pi/sessions.json`，记录最近活跃时间及 `terminal`、`window` 路由元数据；
-3. 收到内容后，通过 Pi 的原生 API `ctx.ui.setEditorText()` **预填到终端输入框（Prefill 模式）**；
-4. **绝不自作主张自动回车发送**，光标停留在内容末尾，让开发者可以自由补充指令或微调内容；
-5. 终端会话启动时，自动读取冷启动时暂存的文件（`~/.pi/pending-browser-input.txt`），无缝实现“唤醒终端并填入内容”。
+1. 自动探测并监听本地内部端口 `127.0.0.1:18091~18095`，支持 **Chrome 扩展零 Daemon 直连**与 Bridge 转发两种模式；
+2. 自动识别当前宿主终端（Rex、Ghostty、iTerm2、Warp、WezTerm、kitty、Alacritty、VS Code、Cursor、Windows Terminal、Terminal.app 等），将活跃会话写入 `~/.pi/send-to-pi/sessions.json`，并将最近使用的终端环境持久化到 `~/.pi/send-to-pi/last-terminal.json`；
+3. 监听 `session_start`、`input`、`agent_start` 事件实时更新 `activeAt`，多开窗口时精准路由到用户刚刚交互的会话；
+4. 收到内容后通过 Pi 原生 API `ctx.ui.setEditorText()` **预填到终端输入框（Prefill 模式，绝不自动回车）**；
+5. 会话启动时自动消费冷启动暂存文件（`~/.pi/pending-browser-input.txt`）。
 
 ## 安装方式
 
-将 `index.ts` 复制或软链接到你的 Pi 扩展目录中：
+推荐直接使用 Pi 内置包管理器安装：
 
-### macOS / Linux
 ```bash
-mkdir -p ~/.pi/agent/extensions
-cp index.ts ~/.pi/agent/extensions/send-to-pi.ts
+pi install npm:send-to-pi
 ```
 
-### Windows (PowerShell)
-```powershell
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.pi\agent\extensions"
-Copy-Item index.ts "$env:USERPROFILE\.pi\agent\extensions\send-to-pi.ts"
-```
-
-重启 `pi` 会话后即可自动加载！
+或手动复制 `index.ts` 到 `~/.pi/agent/extensions/send-to-pi.ts` 后重启 `pi`。

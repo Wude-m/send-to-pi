@@ -2,7 +2,7 @@
 
 [**简体中文**](./README_CN.md) | **English**
 
-> Seamlessly bridge your web browser to the [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent). Send snippets, articles, or links directly into your Pi terminal prompt with one click or keyboard shortcut.
+> Seamlessly bridge your web browser to the [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent). Send snippets, articles, or links directly into your Pi terminal prompt in **any terminal client**—with zero-daemon direct delivery when Pi is open, and 4-layer adaptive cold-start launch when it isn't.
 
 [![npm version](https://img.shields.io/npm/v/send-to-pi.svg)](https://www.npmjs.com/package/send-to-pi)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -11,155 +11,99 @@
 
 ---
 
-## 💡 Why send-to-pi?
+## 💡 Highlights
 
-Modern AI coding agents (like Pi, Claude Code, Aider) shine inside the terminal, but **a massive portion of a developer's daily context lives inside the browser**—GitHub Issues, PR reviews, documentation, Stack Overflow threads, error logs, and technical blog posts.
-
-Traditionally, sending webpage context to an agent means:
-1. Selecting text
-2. Switching windows
-3. Pasting into the terminal
-4. Dealing with broken indentation or destroyed tables, then typing instructions manually
-
-**With `send-to-pi`:**
-Right-click on any selected text, link, or page ➔ **The text is instantly formatted into Markdown and prefilled into your Pi terminal input box**, with the source title & URL cleanly formatted.
-- 🎯 **Prefill Mode (No Auto-Submit)**: The prompt is populated into the editor without auto-submitting. You can review, refine, or append instructions before pressing <kbd>Enter</kbd>.
-- 📝 **HTML to Markdown Preservation**: Selection captures `<pre><code>` blocks, language tags, indentation, `<table>` grids, lists, quotes, and links without loss. Falls back gracefully when restricted.
-- 📖 **Clean Article Extraction (Readability Mode)**: Extract clean article markdown stripped of navigation, footers, sidebars, and ads. X/Twitter pages target the main tweet/article instead of scanning the entire body, then fall back to title and link.
-- ⌨️ **Keyboard Shortcut**: Instant delivery with <kbd>Alt+Shift+S</kbd> (<kbd>Cmd+Shift+S</kbd> on macOS) right after highlighting text or code.
-- 🔄 **Dynamic Port Discovery & Session Routing**: Pi sessions probe 18091~18095 and register in `~/.pi/send-to-pi/sessions.json`. The Bridge routes to the most recent healthy session and keeps the legacy `~/.pi/send-to-pi.json` format compatible.
-- ⚡ **Cold-Start Auto-Wake**: If Pi isn't running, it automatically opens your terminal, starts Pi, and populates the text once the session boots up.
-- 🍏 **True Cross-Platform**: Native terminal launch support for **macOS** (Terminal.app, iTerm2, Ghostty, WezTerm), **Windows** (Windows Terminal, PowerShell), and **Linux**.
-- 🔒 **100% Local & Private**: All communication happens via `127.0.0.1`. No cloud proxy, no data logging.
+- 🔌 **Zero-Daemon Direct Mode (100% Terminal-Agnostic)**: When Pi is already running—in **Rex, Ghostty, iTerm2, Warp, WezTerm, kitty, Alacritty, VS Code, Cursor, Windows Terminal, tmux**, or any other terminal—the Chrome extension talks directly to Pi (`18091~18095`) and prefills via `ctx.ui.setEditorText()`. **No background daemon required for hot delivery.**
+- 🪟 **Active Session Routing & Popup Switcher**: Tracks real user activity (`input` / `agent_start`) across multiple Pi sessions and routes to the most recently used window. Click the extension toolbar icon to view all online Pi sessions (project + terminal) and pin a target if needed.
+- 🎯 **Prefill Mode (No Auto-Submit)**: Inserts formatted Markdown at your cursor without pressing Enter, so you can append instructions first.
+- 📝 **HTML to Markdown & Clean Article Extraction**: Preserves `<pre><code>` language tags, indentation, tables, lists, quotes, and links. Extracts clean articles (including X/Twitter main posts).
+- ⚡ **4-Layer Adaptive Cold-Start (Optional Bridge Daemon)**: Start the optional Bridge Daemon (`npx send-to-pi start`) to wake Pi even when closed:
+  1. **Custom Command Template** (`PI_LAUNCH_CMD` or `~/.pi/send-to-pi/config.json`) — one-line escape hatch for any terminal client.
+  2. **Last Used Terminal Memory** — Pi records the terminal you actually use (`~/.pi/send-to-pi/last-terminal.json`), so cold-start launches the right client (including **Rex**, Ghostty, Warp, WezTerm, kitty, Alacritty, iTerm2, Windows Terminal, etc.).
+  3. **Running / Installed Smart Detection** — prefers currently running terminals before OS defaults.
+  4. **Clipboard Fallback** — if no terminal can be launched, formatted Markdown is copied to your clipboard automatically so nothing is ever lost.
+- 🔒 **100% Local & Private**: Loopback `127.0.0.1` only. Zero cloud calls, zero telemetry.
 
 ---
 
 ## 🛠️ Architecture
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Developer
-    participant Browser as Chrome Extension
-    participant Bridge as Bridge Daemon (:18090)
-    participant Pi as Active Pi Session (18091~18095)
-
-    User->>Browser: Select or Extract Article (Menu / Shortcut)
-    Browser->>Bridge: HTTP POST /send (Markdown, URL, Title)
-    alt Active Pi Running
-        Bridge->>Bridge: Read and clean ~/.pi/send-to-pi/sessions.json
-        Bridge->>Bridge: Fall back to ~/.pi/send-to-pi.json or probe ports
-        Bridge->>Pi: Forward to port /receive
-        Pi->>Pi: ctx.ui.setEditorText() (Prefill)
-        Bridge-->>Browser: 200 OK (Prefilled)
-    else Pi Not Running (Cold Start)
-        Bridge->>Bridge: Save to ~/.pi/pending-browser-input.txt
-        Bridge->>User: Launch Terminal (osascript / wt.exe) & run `pi`
-        User->>Pi: Session Boots
-        Pi->>Pi: Read pending file & prefill input box
-        Bridge-->>Browser: 200 OK (Launched)
-    end
+flowchart LR
+    Chrome[Chrome Extension] -->|1. Primary :18090| Bridge[Bridge Daemon<br/>Optional · Cold-Start]
+    Chrome -.->|2. Zero-Daemon Direct<br/>Probes :18091~18095| Pi[Active Pi Session]
+    Bridge -->|Hot Delivery :18091~18095| Pi
+    Pi -->|ctx.ui.setEditorText| Editor[Any Terminal Client<br/>Rex / Ghostty / Warp / VS Code / WT...]
+    Bridge -->|Cold-Start 4 Layers| Launcher[Custom Cmd → Last Terminal<br/>→ Running/Installed → Clipboard]
+    Chrome -.->|3. Fallback when all offline| Clip[Clipboard Copy]
 ```
 
 ---
 
-## 📦 Quick Start (3 Steps)
+## 📦 Quick Start (2 Steps for Direct Mode)
 
 ### Step 1: Install the Pi Extension
-You can install it directly via Pi's built-in package manager:
-
 ```bash
 pi install npm:send-to-pi
 ```
 
-*(Or from GitHub: `pi install git:github.com/Wude-m/send-to-pi`)*
+Restart or open `pi` in **any terminal**. The extension listens on `127.0.0.1:18091~18095`.
 
-### Step 2: Start the Bridge Daemon
-The bridge daemon runs in the background on your machine:
-
-```bash
-# Using npx directly
-npx send-to-pi start
-
-# Or clone and run
-git clone https://github.com/Wude-m/send-to-pi.git
-cd send-to-pi
-npm start
-```
-
-*(Tip: macOS users can run `bash scripts/start-mac.sh` to run in background. Windows users can double-click `scripts/start-win.vbs` for silent background execution.)*
-
-### Step 3: Load the Chrome Extension
-You don't need to hunt for the folder manually! Just run:
-
+### Step 2: Load the Chrome Extension
 ```bash
 npx send-to-pi extension
 ```
 
-This will print the exact folder path and **automatically open the extension directory in your file manager**. Then:
-1. Open Google Chrome or Microsoft Edge and navigate to `chrome://extensions/`.
-2. Toggle on **Developer mode** in the top-right corner.
-3. Click **Load unpacked** and select the folder that just opened.
-4. You're all set!
+1. Open `chrome://extensions/` in Chrome or Edge.
+2. Enable **Developer mode** (top-right).
+3. Click **Load unpacked** and select the opened folder.
 
----
+That's it! Highlight text on any page and press <kbd>Cmd+Shift+S</kbd> (Windows/Linux: <kbd>Alt+Shift+S</kbd>) or right-click to send directly into your active Pi terminal.
 
-## ⌨️ How to Use
+### Optional Step 3: Start Bridge Daemon (for Cold-Start Auto-Wake)
+Only needed if you want `send-to-pi` to automatically launch a terminal when no Pi session is running:
 
-1. **Send Selected Text / Code (Markdown)**:
-   - Highlight text or code ➔ Right-click ➔ Choose `🚀 Send Selection to Pi`;
-   - Or press shortcut <kbd>Alt+Shift+S</kbd> (<kbd>Cmd+Shift+S</kbd> on macOS).
-2. **Send Clean Article (Readability Mode)**:
-   - Right-click anywhere on the webpage ➔ Choose `🚀 Send Clean Article to Pi`.
-   - The article body is parsed into clean Markdown without ads or navigation menus.
-3. **Send Hyperlink**:
-   - Right-click any link ➔ Choose `🚀 Send Link to Pi`.
-
-The formatted context will immediately appear at your terminal cursor:
-```text
-[Source]: GitHub - earendil-works/pi-coding-agent (https://github.com/...)
-
-```typescript
-export default function (pi: ExtensionAPI) { ... }
-```
-_ [Cursor waits here for your instructions]
-```
-
----
-
-## ⚙️ Configuration & Terminal Customization
-
-You can configure options via environment variables when launching the daemon:
-
-| Environment Variable | Default | Description |
-| :--- | :--- | :--- |
-| `PI_BRIDGE_PORT` | `18090` | Port listened by the Bridge Daemon |
-| `PI_INTERNAL_PORT` | `18091` | Starting port for active Pi sessions (probes 18091~18095) |
-| `PI_WORKDIR` | Current directory | Default working directory when auto-launching Pi |
-| `PI_TERMINAL` | Auto-detect | Preferred terminal: `iterm2`, `ghostty`, `terminal`, `wezterm`, `alacritty` |
-
-Example on macOS:
 ```bash
-PI_TERMINAL=ghostty PI_WORKDIR=~/mycode npx send-to-pi start
+npx send-to-pi start
+```
+
+Check live status anytime (shows both Bridge and Direct-Mode Pi sessions):
+```bash
+npx send-to-pi status
 ```
 
 ---
 
-## 🆕 v1.2.0 Changes
+## ⚙️ Configuration (`~/.pi/send-to-pi/config.json` or Env Vars)
 
-- Fixed X/Twitter article extraction without reading the full page body.
-- Preserved selection and link sending modes.
-- Added multi-session registry and recent healthy-session routing.
-- Added `activeAt`, `terminal`, and `window` session metadata for future terminal routing.
+Run `npx send-to-pi config` to view your config path and effective settings.
 
-## 🤝 Contributing
+Example `~/.pi/send-to-pi/config.json`:
+```json
+{
+  "terminal": "rex",
+  "launchCommand": "rex run --interactive --cwd \"{workdir}\" --keep-open -- pi",
+  "focusOnSend": false
+}
+```
 
-Contributions are warmly welcome! Whether it's:
-- Supporting Firefox / Safari extensions
-- Adding more terminal emulators
-- Providing Homebrew / AUR packages
+| Env Variable | Config Key | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `PI_BRIDGE_PORT` | `bridgePort` | `18090` | Port listened by the optional Bridge Daemon |
+| `PI_INTERNAL_PORT` | `internalPort` | `18091` | Starting port for Pi sessions (probes 5 ports) |
+| `PI_WORKDIR` | `workDir` | Last Pi workdir / cwd | Working directory for cold-start launch |
+| `PI_TERMINAL` | `terminal` | Auto (last used) | Preferred terminal (`rex`, `ghostty`, `iterm2`, `warp`, `wezterm`, `kitty`, `alacritty`, `wt`, `terminal`) |
+| `PI_LAUNCH_CMD` | `launchCommand` | Empty | Custom launch command template with `{workdir}` placeholder |
+| `PI_FOCUS_ON_SEND` | `focusOnSend` | `false` | Bring the target terminal app to front after sending (macOS) |
 
-Please feel free to open an Issue or Pull Request.
+---
+
+## 🆕 v1.3.0 Changes
+
+- **Zero-Daemon Direct Delivery**: Chrome extension automatically falls back to probing active Pi sessions (`18091~18095`) when Bridge (`18090`) is not running—works out of the box on any terminal client.
+- **Toolbar Popup Session Switcher**: View Bridge status and all online Pi sessions (workdir + terminal) and switch between Auto (most recent) or a pinned session.
+- **Real Activity Tracking**: Added `input` and `agent_start` hooks in Pi extension so `activeAt` always reflects the window you are actively using.
+- **4-Layer Cross-Client Cold-Start**: Added native **Rex** (plus Warp, kitty, Alacritty, WezTerm, Ghostty, iTerm2, Windows Terminal) support, automatic `last-terminal.json` memory, custom `launchCommand` template escape hatch, and clipboard fallback.
 
 ---
 

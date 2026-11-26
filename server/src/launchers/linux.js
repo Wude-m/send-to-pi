@@ -1,47 +1,71 @@
 /**
- * Linux Terminal Launcher for send-to-pi
- *
- * Supports:
- * - x-terminal-emulator
- * - gnome-terminal
- * - konsole
- * - kitty / alacritty
- * - xterm
+ * Linux Adaptive Terminal Launcher for send-to-pi
  */
 
 const { spawn } = require('child_process');
 
-function trySpawn(cmd, args, resolve) {
-  try {
-    const child = spawn(cmd, args, {
-      detached: true,
-      stdio: 'ignore',
-    });
-    child.on('error', () => resolve(false));
-    child.unref();
-    setTimeout(() => resolve(true), 200);
-  } catch {
-    resolve(false);
-  }
+function trySpawn(cmd, args) {
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(cmd, args, {
+        detached: true,
+        stdio: 'ignore',
+      });
+      let failed = false;
+      child.on('error', () => {
+        failed = true;
+        resolve(false);
+      });
+      child.unref();
+      setTimeout(() => {
+        if (!failed) resolve(true);
+      }, 220);
+    } catch (_err) {
+      resolve(false);
+    }
+  });
 }
 
-async function launchLinux(workDir) {
-  const customTerminal = (process.env.PI_TERMINAL || '').toLowerCase();
+function shellQuoteSingle(value) {
+  return "'" + String(value).replace(/'/g, "'\\''") + "'";
+}
 
-  const candidates = [
-    ...(customTerminal ? [{ cmd: customTerminal, args: ['-e', `sh -c "cd '${workDir}' && pi; exec sh"`] }] : []),
-    { cmd: 'x-terminal-emulator', args: ['-e', `sh -c "cd '${workDir}' && pi; exec sh"`] },
-    { cmd: 'gnome-terminal', args: ['--working-directory', workDir, '--', 'sh', '-c', 'pi; exec sh'] },
-    { cmd: 'konsole', args: ['--workdir', workDir, '-e', 'sh', '-c', 'pi; exec sh'] },
-    { cmd: 'kitty', args: ['--directory', workDir, 'sh', '-c', 'pi; exec sh'] },
-    { cmd: 'alacritty', args: ['--working-directory', workDir, '-e', 'sh', '-c', 'pi; exec sh'] },
-    { cmd: 'xterm', args: ['-e', `cd '${workDir}' && pi; exec sh`] },
-  ];
+function buildCandidates(workDir) {
+  const quoted = shellQuoteSingle(workDir);
+  return {
+    ghostty: { cmd: 'ghostty', args: ['-e', 'sh', '-lc', `cd ${quoted} && pi; exec ${process.env.SHELL || 'sh'}`] },
+    wezterm: { cmd: 'wezterm', args: ['start', '--cwd', workDir, 'pi'] },
+    kitty: { cmd: 'kitty', args: ['--directory', workDir, 'sh', '-lc', 'pi; exec sh'] },
+    alacritty: { cmd: 'alacritty', args: ['--working-directory', workDir, '-e', 'sh', '-lc', 'pi; exec sh'] },
+    'gnome-terminal': { cmd: 'gnome-terminal', args: ['--working-directory', workDir, '--', 'sh', '-lc', 'pi; exec sh'] },
+    konsole: { cmd: 'konsole', args: ['--workdir', workDir, '-e', 'sh', '-lc', 'pi; exec sh'] },
+    'x-terminal-emulator': { cmd: 'x-terminal-emulator', args: ['-e', `sh -lc "cd ${quoted} && pi; exec sh"`] },
+    xterm: { cmd: 'xterm', args: ['-e', `cd ${quoted} && pi; exec sh`] },
+  };
+}
 
-  for (const item of candidates) {
-    const ok = await new Promise((resolve) => trySpawn(item.cmd, item.args, resolve));
+async function launchLinux(workDir, options = {}) {
+  const candidates = buildCandidates(workDir);
+  const preferred = (options.preferredTerminal || process.env.PI_TERMINAL || '').trim().toLowerCase();
+  const lastKey = (options.lastTerminal && options.lastTerminal.terminal || '').trim().toLowerCase();
+
+  const order = [];
+  const pushUnique = (k) => {
+    if (k && !order.includes(k)) order.push(k);
+  };
+
+  pushUnique(preferred);
+  pushUnique(lastKey);
+  for (const k of Object.keys(candidates)) pushUnique(k);
+
+  for (const key of order) {
+    const item = candidates[key] || {
+      cmd: key,
+      args: ['-e', `sh -lc "cd ${shellQuoteSingle(workDir)} && pi; exec sh"`],
+    };
+    const ok = await trySpawn(item.cmd, item.args);
     if (ok) {
-      return { success: true, terminal: item.cmd };
+      return { success: true, terminal: item.cmd, key };
     }
   }
 

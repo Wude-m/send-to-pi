@@ -1,89 +1,135 @@
 /**
- * Windows Terminal Launcher for send-to-pi
+ * Windows Adaptive Terminal Launcher for send-to-pi
  *
- * Supports:
- * - Tern Terminal (D:\Tern\tern.exe)
- * - Windows Terminal (wt.exe fallback)
- * - PowerShell (powershell.exe fallback)
- * - Command Prompt (cmd.exe fallback)
+ * Resolution order:
+ * 1. Explicit preference (PI_TERMINAL / config.json) or last-terminal.json
+ * 2. Windows Terminal (wt.exe)
+ * 3. PowerShell (pwsh.exe / powershell.exe)
+ * 4. Command Prompt (cmd.exe)
+ * Also supports WezTerm, Alacritty, and Tern when configured or detected.
  */
 
 const { spawn } = require('child_process');
 const fs = require('fs');
 
-function launchWin32(workDir) {
+function spawnAndCheck(cmd, args) {
   return new Promise((resolve) => {
-    // 1. 优先尝试 Tern Terminal (主力终端)
-    const ternPath = 'D:\\Tern\\tern.exe';
-    if (fs.existsSync(ternPath)) {
-      try {
-        const ternArgs = ['-e', 'powershell', '-NoExit', '-Command', `Set-Location '${workDir}'; pi`];
-        const child = spawn(ternPath, ternArgs, {
-          detached: true,
-          stdio: 'ignore',
-        });
-        child.on('error', () => fallbackWT(workDir, resolve));
-        child.unref();
-        setTimeout(() => resolve({ success: true, terminal: 'Tern' }), 300);
-        return;
-      } catch (_e) {
-        // continue
-      }
+    try {
+      const child = spawn(cmd, args, {
+        detached: true,
+        stdio: 'ignore',
+      });
+      let failed = false;
+      child.on('error', () => {
+        failed = true;
+        resolve(false);
+      });
+      child.unref();
+      setTimeout(() => {
+        if (!failed) resolve(true);
+      }, 280);
+    } catch (_err) {
+      resolve(false);
     }
-    fallbackWT(workDir, resolve);
   });
 }
 
-function fallbackWT(workDir, resolve) {
-  // 2. 回退尝试 Windows Terminal (wt.exe)
-  try {
-    const wtArgs = ['-d', workDir, 'powershell', '-NoExit', '-Command', 'pi'];
-    const child = spawn('wt.exe', wtArgs, {
-      detached: true,
-      stdio: 'ignore',
-    });
-
-    child.on('error', (_err) => {
-      fallbackPowerShell(workDir, resolve);
-    });
-
-    child.unref();
-    setTimeout(() => resolve({ success: true, terminal: 'Windows Terminal' }), 300);
-  } catch (_e) {
-    fallbackPowerShell(workDir, resolve);
-  }
+function escapePsSingle(str) {
+  return String(str).replace(/'/g, "''");
 }
 
-function fallbackPowerShell(workDir, resolve) {
-  try {
-    const psArgs = ['-NoExit', '-Command', `Set-Location '${workDir}'; pi`];
-    const child = spawn('powershell.exe', psArgs, {
-      detached: true,
-      stdio: 'ignore',
-    });
+const ADAPTERS = {
+  wt: {
+    label: 'Windows Terminal',
+    launch: (workDir) =>
+      spawnAndCheck('wt.exe', ['-d', workDir, 'powershell', '-NoExit', '-Command', 'pi']),
+  },
+  wezterm: {
+    label: 'WezTerm',
+    launch: (workDir) =>
+      spawnAndCheck('wezterm-gui.exe', ['start', '--cwd', workDir, 'pi']),
+  },
+  alacritty: {
+    label: 'Alacritty',
+    launch: (workDir) =>
+      spawnAndCheck('alacritty.exe', [
+        '--working-directory',
+        workDir,
+        '-e',
+        'powershell',
+        '-NoExit',
+        '-Command',
+        'pi',
+      ]),
+  },
+  tern: {
+    label: 'Tern',
+    launch: (workDir) => {
+      const ternPath = process.env.TERN_PATH || 'D:\\Tern\\tern.exe';
+      if (!fs.existsSync(ternPath)) return Promise.resolve(false);
+      return spawnAndCheck(ternPath, [
+        '-e',
+        'powershell',
+        '-NoExit',
+        '-Command',
+        `Set-Location '${escapePsSingle(workDir)}'; pi`,
+      ]);
+    },
+  },
+  pwsh: {
+    label: 'PowerShell 7',
+    launch: (workDir) =>
+      spawnAndCheck('pwsh.exe', [
+        '-NoExit',
+        '-Command',
+        `Set-Location '${escapePsSingle(workDir)}'; pi`,
+      ]),
+  },
+  powershell: {
+    label: 'PowerShell',
+    launch: (workDir) =>
+      spawnAndCheck('powershell.exe', [
+        '-NoExit',
+        '-Command',
+        `Set-Location '${escapePsSingle(workDir)}'; pi`,
+      ]),
+  },
+  cmd: {
+    label: 'cmd.exe',
+    launch: (workDir) =>
+      spawnAndCheck('cmd.exe', ['/k', `cd /d "${workDir}" && pi`]),
+  },
+};
 
-    child.on('error', (_err) => {
-      fallbackCmd(workDir, resolve);
-    });
-
-    child.unref();
-    setTimeout(() => resolve({ success: true, terminal: 'PowerShell' }), 300);
-  } catch (_e) {
-    fallbackCmd(workDir, resolve);
-  }
+function normalizeKey(name) {
+  const k = (name || '').trim().toLowerCase();
+  if (!k) return '';
+  if (k === 'windows-terminal' || k === 'windowsterminal') return 'wt';
+  return ADAPTERS[k] ? k : '';
 }
 
-function fallbackCmd(workDir, resolve) {
-  try {
-    const child = spawn('cmd.exe', ['/k', `cd /d "${workDir}" && pi`], {
-      detached: true,
-      stdio: 'ignore',
-    });
-    child.unref();
-    resolve({ success: true, terminal: 'cmd.exe' });
-  } catch (err) {
-    resolve({ success: false, error: err.message });
+async function launchWin32(workDir, options = {}) {
+  const preferred = normalizeKey(options.preferredTerminal || process.env.PI_TERMINAL);
+  const lastKey = normalizeKey(options.lastTerminal && options.lastTerminal.terminal);
+  const defaultOrder = ['wt', 'pwsh', 'powershell', 'cmd'];
+
+  const ordered = [];
+  const pushUnique = (k) => {
+    if (k && ADAPTERS[k] && !ordered.includes(k)) ordered.push(k);
+  };
+
+  pushUnique(preferred);
+  pushUnique(lastKey);
+  for (const k of defaultOrder) pushUnique(k);
+
+  for (const key of ordered) {
+    const ok = await ADAPTERS[key].launch(workDir);
+    if (ok) {
+      return { success: true, terminal: ADAPTERS[key].label, key };
+    }
   }
+
+  return { success: false, error: 'Failed to launch any supported Windows terminal.' };
 }
 
 module.exports = launchWin32;

@@ -2,7 +2,7 @@
 
 **简体中文** | [**English**](./README.md)
 
-> 让你的网页浏览器与 [Pi 终端编程助手](https://github.com/earendil-works/pi-coding-agent) 无缝打通。在网页上选中文字、提取整页文章或捕获链接，一键直达终端输入框，自动排版并预填上下文。
+> 让浏览器与 [Pi 终端编程助手](https://github.com/earendil-works/pi-coding-agent) 无缝打通。无论你使用 **Rex、Ghostty、iTerm2、Warp、WezTerm、kitty、Alacritty、VS Code、Cursor 还是 Windows Terminal**，打开 Pi 即可**零守护进程直连**预填到输入框；未打开时也可通过可选 Bridge 实现 4 层自适应冷启动唤醒。
 
 [![npm version](https://img.shields.io/npm/v/send-to-pi.svg)](https://www.npmjs.com/package/send-to-pi)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -11,156 +11,97 @@
 
 ---
 
-## 💡 为什么需要 send-to-pi？
+## 💡 核心特性
 
-现代 AI Coding Agent（如 Pi、Claude Code、Aider 等）在命令行终端里表现极其出色，但日常开发中**绝大部分上下文其实都在浏览器里**——比如正在查阅的 GitHub Issue、PR 代码 Review、官方文档、Stack Overflow 问答、前端报错页面以及技术博文。
-
-以往把网页内容喂给终端 Agent 的流程非常繁琐：
-1. 鼠标划词复制
-2. Alt+Tab 切到终端窗口
-3. 粘贴进输入框
-4. 代码缩进变形、表格散架、手动打字写“请参考以上网页/报错...”
-
-**有了 `send-to-pi` 之后：**
-在任何网页上划选文字、提取文章或点击链接 ➔ **内容自动携带网页标题与来源 URL，毫秒级预填进 Pi 终端输入框**。
-- 🎯 **Prefill 预填模式（绝不自作主张回车）**：内容送到输入框后，光标停留在末尾，你可以从容补充具体指令（如“请根据这段代码重构...”），最后按回车自主发送。
-- 📝 **HTML 智能转 Markdown（保留代码与表格格式）**：划词内容自动识别并还原 `<pre><code>` 语言/缩进、`<table>` 表格、列表、引用及超链接；页面受限时自动平滑降级。
-- 📖 **整页正文提取（Readability 模式）**：自动剔除页眉、页脚、侧边栏及广告噪声。X/Twitter 页面只提取主 tweet/article，不读取整个 body；失败时回退为标题与链接。
-- ⌨️ **快捷键一键直达**：支持全局划选快捷键（默认 <kbd>Alt+Shift+S</kbd> / Mac <kbd>Cmd+Shift+S</kbd>），无需右键鼠标二次点击。
-- 🔄 **动态端口发现与会话路由**：Pi 会话自动探测 18091~18095，并写入 `~/.pi/send-to-pi/sessions.json`。Bridge 优先路由最近的健康会话，并兼容旧版 `~/.pi/send-to-pi.json`。
-- ⚡ **冷启动自动唤醒终端**：若当前未运行 Pi，自动为你拉起终端、启动 `pi`，并在会话初始化完成后自动填入内容！
-- 🍏 **全平台终端适配**：原生支持 **macOS**（Terminal.app、iTerm2、Ghostty、WezTerm 等）、**Windows**（Windows Terminal、PowerShell）以及 **Linux**。
-- 🔒 **纯本地与隐私安全**：全链路通过本地环回地址 `127.0.0.1` 传输，无云端中转，零数据收集。
+- 🔌 **零 Daemon 直连模式（100% 终端客户端无关）**：只要你的 Pi 正在运行（无论在 Rex、Ghostty、Warp、VS Code、Cursor、Windows Terminal 还是 tmux 里），Chrome 扩展在未检测到 `18090` Bridge 时会自动直连 `18091~18095` 的 Pi 扩展，通过 `ctx.ui.setEditorText()` 直接填入输入框——**无需常驻后台进程**。
+- 🪟 **真实活跃会话路由 + 扩展弹窗选窗口**：Pi 扩展通过 `input` / `agent_start` 实时更新活跃时间，多开窗口时自动送到你刚聊天的那个窗口；点击浏览器工具栏扩展图标可查看全部在线 Pi 会话（项目名 + 终端名）并一键锁定目标窗口。
+- 🎯 **Prefill 预填模式（绝不自动回车）**：内容送到输入框后停在末尾，方便你补充指令再回车发送。
+- 📝 **HTML 智能转 Markdown & 正文提取**：保留代码块语言/缩进、表格、列表与链接，支持 X/Twitter 主帖及常见文章正文提取。
+- ⚡ **4 层跨客户端冷启动（可选 Bridge 守护进程）**：当所有 Pi 都关闭时，若启动了 Bridge（`npx send-to-pi start`），按以下 4 层依次兜底：
+  1. **自定义启动命令模板**（`PI_LAUNCH_CMD` 或 `~/.pi/send-to-pi/config.json`）：支持 `{workdir}` 占位符，任何小众终端一行接入。
+  2. **记住上次实际运行 Pi 的终端**（`~/.pi/send-to-pi/last-terminal.json`）：原生支持 **Rex**、Ghostty、Warp、WezTerm、kitty、Alacritty、iTerm2、Windows Terminal 等，不再瞎猜或误开旧终端。
+  3. **运行中终端优先 > 已安装终端 > 系统默认终端**。
+  4. **剪贴板终极兜底**：冷启动失败或无运行中 Pi 时自动把排好版的 Markdown 复制到剪贴板并弹通知，绝不丢内容。
+- 🔒 **纯本地隐私安全**：全链路走 `127.0.0.1`，无云端中转、零数据上报。
 
 ---
 
-## 🛠️ 系统架构与工作流程
+## 🛠️ 工作架构
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor User as 开发者
-    participant Browser as Chrome 扩展
-    participant Bridge as Bridge 守护进程 (:18090)
-    participant Pi as 活跃 Pi 终端 (18091~18095)
-
-    User->>Browser: 划选/文章提取 (右键或快捷键)
-    Browser->>Bridge: HTTP POST /send (Markdown、URL、标题)
-    alt 存在活跃 Pi 会话
-        Bridge->>Bridge: 读取并清理 ~/.pi/send-to-pi/sessions.json
-        Bridge->>Bridge: 回退读取 ~/.pi/send-to-pi.json 或端口探测
-        Bridge->>Pi: 转发至对应端口 /receive
-        Pi->>Pi: ctx.ui.setEditorText() (预填到输入框)
-        Bridge-->>Browser: 200 OK (已填入输入框)
-    else Pi 未运行 (冷启动模式)
-        Bridge->>Bridge: 写入暂存文件 ~/.pi/pending-browser-input.txt
-        Bridge->>User: 自动拉起终端并运行 `pi`
-        User->>Pi: 会话初始化完成
-        Pi->>Pi: 读取暂存文件并填入输入框
-        Bridge-->>Browser: 200 OK (已唤醒终端)
-    end
+flowchart LR
+    Chrome[Chrome 扩展] -->|1. 优先 :18090| Bridge[Bridge 守护进程<br/>可选 · 冷启动唤醒]
+    Chrome -.->|2. 零 Daemon 直连<br/>探测 :18091~18095| Pi[活跃 Pi 会话]
+    Bridge -->|热投递 :18091~18095| Pi
+    Pi -->|ctx.ui.setEditorText| Editor[任意终端里的 Pi 输入框<br/>Rex / Ghostty / Warp / VS Code / WT...]
+    Bridge -->|冷启动 4 层策略| Launcher[自定义命令 → 上次终端<br/>→ 运行中/已装探测 → 剪贴板]
+    Chrome -.->|3. 全部离线时兜底| Clip[复制 Markdown 到剪贴板]
 ```
 
 ---
 
-## 📦 三步快速上手
+## 📦 两步极速上手（直连模式）
 
-### 第一步：安装 Pi 原生扩展
-你可以直接使用 Pi 内置的包管理器一键安装：
-
+### 第一步：安装 Pi 扩展
 ```bash
 pi install npm:send-to-pi
 ```
 
-*(或者通过 GitHub 安装: `pi install git:github.com/Wude-m/send-to-pi`)*
+在**任意终端**打开或重启 `pi`，扩展会自动在 `127.0.0.1:18091~18095` 待命。
 
-### 第一步启动后，扩展会自动随 Pi 启动并在可用端口（18091~18095）监听接收。
-
-### 第二步：启动 Bridge 守护进程
-调度守护进程负责在后台监听浏览器请求并在需要时唤醒终端：
-
-```bash
-# 直接使用 npx 运行
-npx send-to-pi start
-
-# 或者克隆本仓库后运行
-git clone https://github.com/Wude-m/send-to-pi.git
-cd send-to-pi
-npm start
-```
-
-> **后台常驻小提示**：
-> - **macOS / Linux 用户**：直接运行 `bash scripts/start-mac.sh` 即可在后台静默运行。
-> - **Windows 用户**：双击 `scripts/start-win.vbs` 即可无黑框后台静默运行。
-
-### 第三步：加载 Chrome 浏览器扩展
-你完全不需要手动去翻找目录，只需在终端运行：
-
+### 第二步：加载 Chrome 扩展
 ```bash
 npx send-to-pi extension
 ```
 
-该命令会打印出扩展目录并**自动在系统文件管理器中打开该文件夹**。然后：
-1. 打开 Chrome 或 Edge 浏览器，访问 `chrome://extensions/`；
-2. 开启右上角的 **“开发者模式”**（Developer mode）；
-3. 点击左上角的 **“加载已解压的扩展程序”**（Load unpacked），选择刚刚为你弹出的文件夹即可！
+1. 在 Chrome / Edge 打开 `chrome://extensions/`；
+2. 开启右上角 **开发者模式**；
+3. 点击 **加载已解压的扩展程序**，选择弹出的文件夹即可。
 
----
+现在即可在任意网页划词按 <kbd>Cmd+Shift+S</kbd>（Windows/Linux: <kbd>Alt+Shift+S</kbd>）或右键直发到 Pi 输入框！
 
-## ⌨️ 日常使用演示
-
-1. **发送划选内容（Markdown 格式）**：
-   - 网页上鼠标选中任何代码或文本 ➔ 右键 ➔ 点击 `🚀 发送选中内容给 Pi`；
-   - 或划选后直接按下快捷键 <kbd>Alt+Shift+S</kbd>（Mac: <kbd>Cmd+Shift+S</kbd>）。
-2. **发送精简正文（Readability 模式）**：
-   - 在网页任意空白处 ➔ 右键 ➔ 点击 `🚀 发送精简文章给 Pi`；
-   - 自动解析正文结构转为 Markdown，剔除无关导航和广告。
-3. **发送超链接**：
-   - 在任意超链接上 ➔ 右键 ➔ 点击 `🚀 发送此链接给 Pi`。
-
-终端输入框中会立即呈现带有来源标题与 URL 的整洁 Markdown 内容：
-```text
-【来源】：GitHub - earendil-works/pi-coding-agent (https://github.com/...)
-
-```typescript
-export default function (pi: ExtensionAPI) { ... }
-```
-_ [光标停在此处，等待你补充提示词]
-```
-
----
-
-## ⚙️ 环境变量与终端自定义
-
-支持通过环境变量调整守护进程行为：
-
-| 环境变量 | 默认值 | 说明 |
-| :--- | :--- | :--- |
-| `PI_BRIDGE_PORT` | `18090` | Bridge 调度进程监听的端口 |
-| `PI_INTERNAL_PORT` | `18091` | 活跃 Pi 会话内部起始端口（自动探测 18091~18095） |
-| `PI_WORKDIR` | 当前目录 | 自动唤醒 Pi 时默认进入的工作目录 |
-| `PI_TERMINAL` | 自动探测 | macOS/Linux 指定偏好终端（如 `iterm2`, `ghostty`, `terminal`, `alacritty`） |
-
-macOS 示例：
+### 可选第三步：启动 Bridge 守护进程（需要冷启动自动拉起终端时）
 ```bash
-PI_TERMINAL=ghostty PI_WORKDIR=~/mycode npx send-to-pi start
+npx send-to-pi start
+```
+
+随时检查在线状态（同时显示 Bridge 与直连 Pi 会话）：
+```bash
+npx send-to-pi status
 ```
 
 ---
 
-## 🆕 v1.2.0 变更
+## ⚙️ 自定义配置（`~/.pi/send-to-pi/config.json` 或环境变量）
 
-- 修复 X/Twitter 文章提取，避免读取整个页面 body。
-- 保留选中内容与链接发送模式。
-- 新增多 Pi 会话注册表及最近健康会话路由。
-- 注册会话预留 `activeAt`、`terminal`、`window` 字段。
+运行 `npx send-to-pi config` 查看配置文件路径与当前生效值。
 
-## 🤝 欢迎贡献
+示例 `~/.pi/send-to-pi/config.json`：
+```json
+{
+  "terminal": "rex",
+  "launchCommand": "rex run --interactive --cwd \"{workdir}\" --keep-open -- pi",
+  "focusOnSend": false
+}
+```
 
-欢迎提交 PR 或 Issue！无论是：
-- 适配 Firefox / Safari 扩展
-- 支持更多小众终端仿真器
-- 完善打包与系统服务脚本
+| 环境变量 | 配置文件键 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `PI_BRIDGE_PORT` | `bridgePort` | `18090` | 可选 Bridge 守护进程监听端口 |
+| `PI_INTERNAL_PORT` | `internalPort` | `18091` | Pi 会话直连起始端口（自动探测 5 个端口） |
+| `PI_WORKDIR` | `workDir` | 上次 Pi 目录 / cwd | 冷启动默认进入的工作目录 |
+| `PI_TERMINAL` | `terminal` | 自动（上次终端） | 偏好终端（`rex`, `ghostty`, `iterm2`, `warp`, `wezterm`, `kitty`, `alacritty`, `wt`, `terminal`） |
+| `PI_LAUNCH_CMD` | `launchCommand` | 空 | 万能自定义冷启动命令模板，支持 `{workdir}` 占位符 |
+| `PI_FOCUS_ON_SEND` | `focusOnSend` | `false` | 设为 `true` 时热投递后自动切回对应终端窗口（macOS） |
+
+---
+
+## 🆕 v1.3.0 变更
+
+- **零 Daemon 直连模式**：未启动 Bridge 时自动探测活跃 Pi（`18091~18095`）直发到输入框，彻底摆脱对后台守护进程和特定终端的依赖。
+- **扩展弹窗会话切换器**：点击工具栏图标即可查看 Bridge 状态与全部在线 Pi 会话（项目名 + 终端名），支持自动路由或手动锁定窗口。
+- **真实活跃度追踪**：补齐 `input` / `agent_start` 钩子，多开窗口时精准投递到刚交互的会话。
+- **4 层跨客户端冷启动**：新增 **Rex**、Warp、kitty、Alacritty 等终端支持，增加 `last-terminal.json` 自动记忆、`launchCommand` 自定义命令逃生舱与剪贴板终极兜底。
 
 ---
 
