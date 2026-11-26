@@ -1,5 +1,5 @@
 /**
- * send-to-pi Bridge Daemon (v1.4.0)
+ * send-to-pi Bridge Daemon (v1.4.1)
  *
  * Listens on: 127.0.0.1:18090 (receives Chrome extension requests)
  * Dynamically discovers active Pi sessions (18091 ~ 18095 or ~/.pi/send-to-pi/sessions.json)
@@ -389,6 +389,7 @@ function createBridgeServer(deps = {}) {
   const clipboard = deps.copyToClipboard || copyToClipboard;
   const discover = deps.findActivePi || findActivePi;
   const discoverAll = deps.discoverAllActivePis || discoverAllActivePis;
+  const pendingFile = deps.pendingFile || PENDING_FILE;
 
   const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -410,7 +411,7 @@ function createBridgeServer(deps = {}) {
       res.end(
         JSON.stringify({
           status: 'ok',
-          version: '1.4.0',
+          version: '1.4.1',
           platform: process.platform,
           bridgePort: BRIDGE_PORT,
           defaultInternalPort: PI_INTERNAL_PORT,
@@ -479,7 +480,7 @@ function createBridgeServer(deps = {}) {
           // 2. Cold-start flow: smart-offload long content before writing pending file.
           console.log('[Bridge] No active Pi detected. Writing pending file and launching terminal...');
           const prepared = prepareColdStartContent(payload, content);
-          fs.writeFileSync(PENDING_FILE, prepared.text, 'utf8');
+          fs.writeFileSync(pendingFile, prepared.text, 'utf8');
 
           const workDir = getWorkDir();
           const launchResult = await launch(workDir);
@@ -498,6 +499,11 @@ function createBridgeServer(deps = {}) {
             );
             return;
           }
+
+          // Launch failed — remove pending file immediately so it never ghosts into a future session.
+          try {
+            if (fs.existsSync(pendingFile)) fs.unlinkSync(pendingFile);
+          } catch (_cleanupErr) {}
 
           // 3. Layer 4 fallback: copy formatted Markdown to clipboard so content is never lost.
           const copied = await clipboard(prepared.text);
@@ -544,7 +550,7 @@ function startDaemon() {
 
   server.listen(BRIDGE_PORT, '127.0.0.1', () => {
     console.log(`===============================================`);
-    console.log(`🚀 send-to-pi Bridge Daemon v1.4.0 is running!`);
+    console.log(`🚀 send-to-pi Bridge Daemon v1.4.1 is running!`);
     console.log(`📡 Listening on: http://127.0.0.1:${BRIDGE_PORT}`);
     console.log(`💻 Platform:     ${process.platform}`);
     console.log(`📂 Work Dir:     ${getWorkDir()}`);

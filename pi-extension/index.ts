@@ -24,6 +24,7 @@ const DEFAULT_DELIVERY_MODE: DeliveryMode = "smart";
 const DEFAULT_INLINE_LIMIT = 1500;
 const INBOX_MAX_FILES = 50;
 const INBOX_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const PENDING_MAX_AGE_MS = 2 * 60 * 1000; // 2 minutes TTL for cold-start pending file
 
 type DeliveryMode = "smart" | "inline" | "link";
 
@@ -630,7 +631,7 @@ export default function (pi: ExtensionAPI) {
           res.end(
             JSON.stringify({
               status: "alive",
-              version: "1.4.0",
+              version: "1.4.1",
               port,
               pid: process.pid,
               workdir,
@@ -741,16 +742,20 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     activeCtx = ctx;
 
-    // 检查是否有冷启动唤醒时暂存的内容
+    // 检查是否有冷启动唤醒时暂存的内容（超过 2 分钟的陈旧文件直接清理丢弃，防止误填入后续新会话）
     for (const pendingFile of getPendingFilePaths()) {
       if (fs.existsSync(pendingFile)) {
         try {
+          const stat = fs.statSync(pendingFile);
+          const ageMs = Date.now() - stat.mtimeMs;
           const content = fs.readFileSync(pendingFile, "utf8");
           fs.unlinkSync(pendingFile);
-          setTimeout(() => {
-            prefillEditor(ctx, content);
-          }, 800);
-          break;
+          if (ageMs <= PENDING_MAX_AGE_MS && content.trim().length > 0) {
+            setTimeout(() => {
+              prefillEditor(ctx, content);
+            }, 800);
+            break;
+          }
         } catch (err: any) {
           console.error("[SendToPi] Failed to read pending file:", err.message);
         }

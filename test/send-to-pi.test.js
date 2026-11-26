@@ -156,8 +156,9 @@ test('Bridge routes hot delivery to the most recently active Pi session and retu
   }
 });
 
-test('Bridge falls back to clipboard mode when no Pi is running and terminal launch fails', async () => {
+test('Bridge falls back to clipboard mode and removes pending file when terminal launch fails', async () => {
   let clipboardCopied = '';
+  const isolatedPending = path.join(os.tmpdir(), `send-to-pi-pending-test-${Date.now()}.txt`);
   const bridge = createBridgeServer({
     findActivePi: async () => null,
     launchTerminal: async () => ({ success: false, error: 'Simulated terminal unavailable' }),
@@ -165,6 +166,7 @@ test('Bridge falls back to clipboard mode when no Pi is running and terminal lau
       clipboardCopied = text;
       return true;
     },
+    pendingFile: isolatedPending,
   });
 
   await new Promise((r) => bridge.listen(0, '127.0.0.1', r));
@@ -181,7 +183,9 @@ test('Bridge falls back to clipboard mode when no Pi is running and terminal lau
     assert.equal(res.json.success, true);
     assert.equal(res.json.mode, 'clipboard');
     assert.match(clipboardCopied, /https:\/\/example\.com\/fallback/);
+    assert.equal(fs.existsSync(isolatedPending), false, 'Pending file must be cleaned up when launch fails');
   } finally {
+    if (fs.existsSync(isolatedPending)) fs.unlinkSync(isolatedPending);
     bridge.close();
   }
 });
@@ -234,7 +238,7 @@ test('discoverAllActivePis sorts concurrent sessions by activeAt descending', as
   }
 });
 
-test('All JS files pass Node syntax check and manifest.json is valid v1.4.0', () => {
+test('All JS files pass Node syntax check and manifest.json is valid v1.4.1', () => {
   const root = path.resolve(__dirname, '..');
   const jsFiles = [
     'chrome-extension/background.js',
@@ -256,8 +260,54 @@ test('All JS files pass Node syntax check and manifest.json is valid v1.4.0', ()
   }
 
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'chrome-extension/manifest.json'), 'utf8'));
-  assert.equal(manifest.version, '1.4.0');
+  assert.equal(manifest.version, '1.4.1');
   assert.equal(manifest.action.default_popup, 'popup.html');
+});
+
+test('Pi extension discards stale pending-browser-input.txt older than 2 minutes TTL', () => {
+  const root = path.resolve(__dirname, '..');
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'send-to-pi-ttl-'));
+  const piDir = path.join(tmpHome, '.pi');
+  fs.mkdirSync(piDir, { recursive: true });
+  const staleFile = path.join(piDir, 'pending-browser-input.txt');
+  fs.writeFileSync(staleFile, 'stale ghost content', 'utf8');
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  fs.utimesSync(staleFile, fiveMinutesAgo, fiveMinutesAgo);
+
+  const extPath = path.join(root, 'pi-extension/index.ts');
+  const script = `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import register from ${JSON.stringify('file://' + extPath)};
+
+    const handlers = {};
+    const pi = { on: (name, fn) => { handlers[name] = fn; } };
+    let editorText = '';
+    const ctx = {
+      cwd: '/tmp/ttl-demo',
+      ui: {
+        getEditorText: () => editorText,
+        setEditorText: (val) => { editorText = val; },
+        notify: () => {},
+      },
+    };
+
+    register(pi);
+    await handlers.session_start({}, ctx);
+    await new Promise((r) => setTimeout(r, 900));
+    assert.equal(fs.existsSync(${JSON.stringify(staleFile)}), false, 'Stale pending file should be deleted');
+    assert.equal(editorText, '', 'Stale pending file must NOT prefill new session editor');
+    await handlers.session_shutdown({}, ctx);
+  `;
+
+  try {
+    execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      env: { ...process.env, HOME: tmpHome, PI_INTERNAL_PORT: '19391' },
+      stdio: 'pipe',
+    });
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
 });
 
 test('Pi extension v1.4.0 smart delivery: short inline, long saved to inbox @file, link mode, and inbox pruning', () => {
