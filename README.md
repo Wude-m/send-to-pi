@@ -15,6 +15,7 @@
 
 - 🔌 **Zero-Daemon Direct Mode (100% Terminal-Agnostic)**: When Pi is already running—in **Rex, Ghostty, iTerm2, Warp, WezTerm, kitty, Alacritty, VS Code, Cursor, Windows Terminal, tmux**, or any other terminal—the Chrome extension talks directly to Pi (`18091~18095`) and prefills via `ctx.ui.setEditorText()`. **No background daemon required for hot delivery.**
 - 🪟 **Active Session Routing & Popup Switcher**: Tracks real user activity (`input` / `agent_start`) across multiple Pi sessions and routes to the most recently used window. Click the extension toolbar icon to view all online Pi sessions (project + terminal) and pin a target if needed.
+- 🧠 **Smart Length Routing (Short Inline, Long `@file`)**: Short snippets (≤ 1,500 chars by default) are prefilled directly; long articles are saved locally to `~/.pi/send-to-pi/inbox/*.md` (auto-pruned) and inserted as a clean 3-line `@file` reference—keeping your terminal prompt clean while preserving logged-in browser content! Switch between **Smart / Inline / Link Only** anytime in the toolbar popup.
 - 🎯 **Prefill Mode (No Auto-Submit)**: Inserts formatted Markdown at your cursor without pressing Enter, so you can append instructions first.
 - 📝 **HTML to Markdown & Clean Article Extraction**: Preserves `<pre><code>` language tags, indentation, tables, lists, quotes, and links. Extracts clean articles (including X/Twitter main posts).
 - ⚡ **4-Layer Adaptive Cold-Start (Optional Bridge Daemon)**: Start the optional Bridge Daemon (`npx send-to-pi start`) to wake Pi even when closed:
@@ -91,12 +92,20 @@ Example `~/.pi/send-to-pi/config.json`:
 | :--- | :--- | :--- | :--- |
 | `PI_BRIDGE_PORT` | `bridgePort` | `18090` | Port listened by the optional Bridge Daemon |
 | `PI_INTERNAL_PORT` | `internalPort` | `18091` | Starting port for Pi sessions (probes 5 ports) |
+| `PI_DELIVERY_MODE` | `deliveryMode` | `smart` | `smart` (short inline, long `@file`), `inline`, or `link` |
+| `PI_INLINE_LIMIT` | `inlineLimit` | `1500` | Char threshold before `smart` mode saves to `inbox/` |
 | `PI_WORKDIR` | `workDir` | Last Pi workdir / cwd | Working directory for cold-start launch |
 | `PI_TERMINAL` | `terminal` | Auto (last used) | Preferred terminal (`rex`, `ghostty`, `iterm2`, `warp`, `wezterm`, `kitty`, `alacritty`, `wt`, `terminal`) |
 | `PI_LAUNCH_CMD` | `launchCommand` | Empty | Custom launch command template with `{workdir}` placeholder |
 | `PI_FOCUS_ON_SEND` | `focusOnSend` | `false` | Bring the target terminal app to front after sending (macOS) |
 
 ---
+
+## 🆕 v1.4.0 Changes
+
+- **Smart Length Routing (Short Inline + Long `@file`)**: Content over 1,500 chars is automatically saved as clean Markdown in `~/.pi/send-to-pi/inbox/` (auto-prunes old files) and prefilled as a concise 3-line `@file` reference.
+- **One-Click Mode Switcher**: Switch between `Smart`, `Inline`, and `Link Only` directly inside the Chrome extension popup (plus a new "Send Current Page URL" context menu).
+- **Cleaner X/Twitter Extraction**: Strips trailing link preview cards, view/quote counters, and redundant `t.co` link wrappers; truncates overly long page titles.
 
 ## 🆕 v1.3.0 Changes
 

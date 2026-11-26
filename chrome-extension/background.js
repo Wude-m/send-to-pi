@@ -1,22 +1,27 @@
 /**
  * Send to Pi - Chrome Background Service Worker
- * Version: 1.3.0
+ * Version: 1.4.0
  *
- * Dual-path delivery:
+ * Dual-path smart delivery:
  * 1. Primary: Local Bridge Daemon (127.0.0.1:18090) — supports cold-start terminal launch & focus.
  * 2. Zero-Daemon Direct Fallback: Probes active Pi sessions on 127.0.0.1:18091~18095 directly
  *    and routes to the most recently active session (or user-pinned session), terminal-agnostic.
- * 3. Clipboard Fallback: Copies formatted Markdown to clipboard when neither Bridge nor Pi is active.
+ * 3. Smart Payload Routing: Short text is prefilled inline; long articles (> inlineLimit) are
+ *    saved locally as Markdown and inserted as a clean 3-line @file reference.
+ * 4. Clipboard Fallback: Copies formatted Markdown to clipboard when neither Bridge nor Pi is active.
  */
 
 const DEFAULT_BRIDGE_PORT = 18090;
 const DEFAULT_INTERNAL_PORT_START = 18091;
 const INTERNAL_PORT_COUNT = 5;
+const DEFAULT_DELIVERY_MODE = "smart";
+const DEFAULT_INLINE_LIMIT = 1500;
 const isChinese = (navigator.language || "").toLowerCase().startsWith("zh");
 
 const i18n = {
   menuSelection: isChinese ? "🚀 发送选中内容给 Pi" : "🚀 Send Selection to Pi",
   menuArticle: isChinese ? "🚀 发送精简文章给 Pi" : "🚀 Send Clean Article to Pi",
+  menuPageLink: isChinese ? "🔗 仅发送当前页面链接给 Pi" : "🔗 Send Current Page URL to Pi",
   menuLink: isChinese ? "🚀 发送此链接给 Pi" : "🚀 Send Link to Pi",
   notifyLaunchedTitle: isChinese ? "已唤起终端并预填内容" : "Terminal Launched & Prefilled",
   notifyLaunchedMsg: (term) =>
@@ -25,10 +30,24 @@ const i18n = {
       : `Started ${term || "terminal"}, prompt is ready in Pi!`,
   notifyPrefilledTitle: isChinese ? "已填入 Pi 终端输入框" : "Prefilled into Pi Terminal",
   notifyDirectTitle: isChinese ? "已直连填入 Pi 输入框" : "Prefilled Directly into Pi",
-  notifyPrefilledMsg: (target) =>
-    isChinese
-      ? `内容已送达${target ? `（${target}）` : ""}，可自由补充要求或按 Enter 发送！`
-      : `Delivered${target ? ` (${target})` : ""}. Append instructions or press Enter!`,
+  notifyFileTitle: isChinese ? "长文已存为本地文件并填入 @引用" : "Long Article Saved & @Referenced",
+  notifyPrefilledMsg: (target, delivery, charCount) => {
+    const suffix = target ? (isChinese ? `（${target}）` : ` (${target})`) : "";
+    if (delivery === "file") {
+      const sizeStr =
+        charCount && charCount >= 1000
+          ? isChinese
+            ? `，约 ${(charCount / 1000).toFixed(1).replace(/\.0$/, "")}k 字`
+            : `, ~${(charCount / 1000).toFixed(1).replace(/\.0$/, "")}k chars`
+          : "";
+      return isChinese
+        ? `正文已落盘为本地 Markdown${sizeStr}${suffix}，输入框仅保留 3 行引用，可清爽补充指令！`
+        : `Saved locally as Markdown${sizeStr}${suffix}. Clean @file reference added to prompt!`;
+    }
+    return isChinese
+      ? `内容已送达${suffix}，可自由补充要求或按 Enter 发送！`
+      : `Delivered${suffix}. Append instructions or press Enter!`;
+  },
   notifyClipboardTitle: isChinese ? "已复制到剪贴板（兜底）" : "Copied to Clipboard (Fallback)",
   notifyClipboardMsg: isChinese
     ? "未检测到运行中的 Pi 或 Bridge，已将 Markdown 复制到剪贴板，请切回终端粘贴（或运行 npx send-to-pi start 启用自动唤醒）。"
@@ -56,12 +75,20 @@ function getSettings() {
         bridgePort: DEFAULT_BRIDGE_PORT,
         internalPortStart: DEFAULT_INTERNAL_PORT_START,
         preferredPort: 0,
+        deliveryMode: DEFAULT_DELIVERY_MODE,
+        inlineLimit: DEFAULT_INLINE_LIMIT,
       },
       (items) => {
+        const mode = ["smart", "inline", "link"].includes(items.deliveryMode)
+          ? items.deliveryMode
+          : DEFAULT_DELIVERY_MODE;
+        const limit = Number(items.inlineLimit);
         resolve({
           bridgePort: Number(items.bridgePort) || DEFAULT_BRIDGE_PORT,
           internalPortStart: Number(items.internalPortStart) || DEFAULT_INTERNAL_PORT_START,
           preferredPort: Number(items.preferredPort) || 0,
+          deliveryMode: mode,
+          inlineLimit: Number.isFinite(limit) && limit >= 200 ? Math.floor(limit) : DEFAULT_INLINE_LIMIT,
         });
       }
     );
@@ -92,18 +119,25 @@ function formatTargetLabel(info) {
   return parts.join(" · ");
 }
 
+function cleanShortTitle(title, maxLen = 80) {
+  const s = String(title || "").replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  return s.length <= maxLen ? s : s.slice(0, maxLen - 1).trimEnd() + "…";
+}
+
 function formatContent(payload) {
   const { type, text, title, url, lang } = payload;
   const isZh = lang === "zh";
+  const shortTitle = cleanShortTitle(title);
 
   if (type === "selection") {
     const label = isZh ? "【来源】" : "[Source]";
-    return `${label}: ${title || (isZh ? "网页摘录" : "Web Snippet")} (${url || ""})\n\n${text}\n\n`;
+    return `${label}: ${shortTitle || (isZh ? "网页摘录" : "Web Snippet")} (${url || ""})\n\n${text}\n\n`;
   }
   if (type === "article") {
     const titleLabel = isZh ? "【网页文章】" : "[Web Article]";
     const linkLabel = isZh ? "【网页链接】" : "[Link]";
-    return `${titleLabel}: ${title || (isZh ? "正文" : "Article")}\n${linkLabel}: ${url || ""}\n\n${text}\n\n`;
+    return `${titleLabel}: ${shortTitle || (isZh ? "正文" : "Article")}\n${linkLabel}: ${url || ""}\n\n${text}\n\n`;
   }
   if (type === "link") {
     const label = isZh ? "【网页链接】" : "[Link]";
@@ -111,7 +145,7 @@ function formatContent(payload) {
   }
   const titleLabel = isZh ? "【网页标题】" : "[Title]";
   const linkLabel = isZh ? "【网页链接】" : "[Link]";
-  return `${titleLabel}: ${title || (isZh ? "网页" : "Page")}\n${linkLabel}: ${url || ""}\n\n`;
+  return `${titleLabel}: ${shortTitle || (isZh ? "网页" : "Page")}\n${linkLabel}: ${url || ""}\n\n`;
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -153,15 +187,24 @@ async function discoverDirectPiSessions(startPort) {
     );
 }
 
-async function sendDirectlyToPi(port, content) {
+async function sendDirectlyToPi(port, payload, formattedContent, settings) {
   const res = await fetchWithTimeout(
     `http://127.0.0.1:${port}/receive`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({
+        content: formattedContent,
+        type: payload.type,
+        text: payload.text,
+        title: payload.title,
+        url: payload.url,
+        lang: payload.lang,
+        deliveryMode: settings.deliveryMode,
+        inlineLimit: settings.inlineLimit,
+      }),
     },
-    1500
+    1800
   );
   if (!res.ok) {
     throw new Error(`Pi port ${port} responded with HTTP ${res.status}`);
@@ -216,6 +259,12 @@ chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({
       id: "send_article",
       title: i18n.menuArticle,
+      contexts: ["page"],
+    });
+
+    chrome.contextMenus.create({
+      id: "send_page_link",
+      title: i18n.menuPageLink,
       contexts: ["page"],
     });
 
@@ -287,9 +336,14 @@ function inPageExtractor(mode) {
 
       if (tag === "a") {
         const text = getChildrenText(node, depth).trim();
-        const href = node.getAttribute("href");
+        const href = (node.getAttribute("href") || "").trim();
         if (!text) return "";
         if (href && !href.startsWith("javascript:")) {
+          // Clean up X/Twitter t.co wrappers when link text is already the full clean URL.
+          if (/^https?:\/\/t\.co\//i.test(href) && /^https?:\/\/\S+$/i.test(text) && !/[…]$|\.\.\.$/.test(text)) {
+            return text;
+          }
+          if (text === href) return href;
           return `[${text}](${href})`;
         }
         return text;
@@ -402,6 +456,22 @@ function inPageExtractor(mode) {
     return rawMd.replace(/\n{3,}/g, "\n\n").trim();
   }
 
+  function cleanXTrailingNoise(md) {
+    if (!md) return "";
+    const lines = md.split("\n");
+    const noiseLine =
+      /^(?:·|•|相关|Relevant|查看|Views?|查看引用|View quotes|Quotes?|Reposts?|Likes?|Bookmarks?|\d+(?:\.\d+)?[万千KkMm]?\s*(?:查看|Views?)?|\[(?:查看引用|View quotes|.*(?:查看|Views?))\]\(\/[^)]+\))$/i;
+    while (lines.length > 0) {
+      const tail = lines[lines.length - 1].trim();
+      if (!tail || noiseLine.test(tail)) {
+        lines.pop();
+      } else {
+        break;
+      }
+    }
+    return lines.join("\n").trim();
+  }
+
   if (mode === "selection") {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
@@ -448,6 +518,19 @@ function inPageExtractor(mode) {
         '[data-testid="UserDescription"]',
         '[data-testid="tweetPhoto"]',
         '[data-testid="videoPlayer"]',
+        '[data-testid="card.wrapper"]',
+        '[data-testid="card.layoutLarge.media"]',
+        '[data-testid="card.layoutSmall.media"]',
+        '[data-testid="analyticsButton"]',
+        '[data-testid="socialContext"]',
+        '[data-testid="reply"]',
+        '[data-testid="retweet"]',
+        '[data-testid="like"]',
+        '[data-testid="bookmark"]',
+        'a[href$="/analytics"]',
+        'a[href$="/quotes"]',
+        'a[href$="/retweets"]',
+        'a[href$="/likes"]',
         '[role="group"]',
         "time",
         "img",
@@ -455,7 +538,7 @@ function inPageExtractor(mode) {
         cleanTweet.querySelectorAll(selector).forEach((el) => el.remove());
       });
 
-      const xMarkdown = domToMarkdown(cleanTweet);
+      const xMarkdown = cleanXTrailingNoise(domToMarkdown(cleanTweet));
       return xMarkdown || null;
     }
 
@@ -519,15 +602,27 @@ async function extractFromTab(tabId, mode) {
   }
 }
 
+function notifyDelivered(data, isDirect) {
+  const target = formatTargetLabel(data);
+  const title =
+    data && data.delivery === "file"
+      ? i18n.notifyFileTitle
+      : isDirect
+        ? i18n.notifyDirectTitle
+        : i18n.notifyPrefilledTitle;
+  showNotify(title, i18n.notifyPrefilledMsg(target, data && data.delivery, data && data.charCount));
+}
+
 async function sendPayload(payload, tabId = null) {
-  const { bridgePort, internalPortStart, preferredPort } = await getSettings();
+  const settings = await getSettings();
+  const { bridgePort, internalPortStart, preferredPort } = settings;
   const formattedContent = formatContent(payload);
 
   // 0. If user pinned a specific Pi session port in the popup, try it first.
   if (preferredPort > 0) {
     try {
-      const res = await sendDirectlyToPi(preferredPort, formattedContent);
-      showNotify(i18n.notifyDirectTitle, i18n.notifyPrefilledMsg(formatTargetLabel(res)));
+      const res = await sendDirectlyToPi(preferredPort, payload, formattedContent, settings);
+      notifyDelivered(res, true);
       return;
     } catch (_err) {
       // Pinned session closed — fall through to normal routing.
@@ -541,7 +636,11 @@ async function sendPayload(payload, tabId = null) {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          deliveryMode: settings.deliveryMode,
+          inlineLimit: settings.inlineLimit,
+        }),
       },
       2500
     );
@@ -553,7 +652,7 @@ async function sendPayload(payload, tabId = null) {
       } else if (data.mode === "clipboard") {
         showNotify(i18n.notifyClipboardTitle, i18n.notifyBridgeClipboardMsg);
       } else {
-        showNotify(i18n.notifyPrefilledTitle, i18n.notifyPrefilledMsg(formatTargetLabel(data)));
+        notifyDelivered(data, false);
       }
       return;
     } else {
@@ -568,11 +667,8 @@ async function sendPayload(payload, tabId = null) {
   const directSessions = await discoverDirectPiSessions(internalPortStart);
   for (const session of directSessions) {
     try {
-      const res = await sendDirectlyToPi(session.port, formattedContent);
-      showNotify(
-        i18n.notifyDirectTitle,
-        i18n.notifyPrefilledMsg(formatTargetLabel({ ...session, ...res }))
-      );
+      const res = await sendDirectlyToPi(session.port, payload, formattedContent, settings);
+      notifyDelivered({ ...session, ...res }, true);
       return;
     } catch (_err) {
       // Try next healthy session if one disappeared mid-request.
@@ -611,14 +707,27 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 
   if (info.menuItemId === "send_article") {
+    const settings = await getSettings();
     let articleText = null;
-    if (tabId) {
+    if (tabId && settings.deliveryMode !== "link") {
       articleText = await extractFromTab(tabId, "article");
     }
 
     const payload = {
       type: articleText ? "article" : "page",
       text: articleText || "",
+      title: tab ? tab.title : "",
+      url: tab ? tab.url : "",
+      lang: isChinese ? "zh" : "en",
+    };
+    await sendPayload(payload, tabId);
+    return;
+  }
+
+  if (info.menuItemId === "send_page_link") {
+    const payload = {
+      type: "page",
+      text: "",
       title: tab ? tab.title : "",
       url: tab ? tab.url : "",
       lang: isChinese ? "zh" : "en",

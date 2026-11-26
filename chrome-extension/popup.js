@@ -4,6 +4,20 @@ const INTERNAL_PORT_COUNT = 5;
 const isChinese = (navigator.language || "").toLowerCase().startsWith("zh");
 
 const t = {
+  modeLabel: isChinese ? "内容填充模式" : "Delivery Mode",
+  modeSmart: isChinese ? "智能分流" : "Smart",
+  modeInline: isChinese ? "全文直填" : "Inline",
+  modeLink: isChinese ? "仅发链接" : "Link Only",
+  modeHints: {
+    smart: (limit) =>
+      isChinese
+        ? `≤${limit} 字直填输入框；更长自动存本地 .md 仅填 @路径`
+        : `≤${limit} chars inline; longer saved to local .md with @path`,
+    inline: () =>
+      isChinese ? "无论多长均直接填入终端输入框" : "Always prefill full Markdown text into prompt",
+    link: () =>
+      isChinese ? "整页发送只填标题与 URL（划词仍发送选中文本）" : "Article mode sends title + URL only (selection still sends text)",
+  },
   targetLabel: isChinese ? "目标 Pi 会话" : "Target Pi Session",
   bridgeOnline: isChinese ? "Bridge 在线" : "Bridge Online",
   bridgeDirect: isChinese ? "直连模式 (无 Bridge)" : "Direct Mode (No Bridge)",
@@ -14,7 +28,7 @@ const t = {
     : "No active Pi session found. Open Pi in any terminal for direct send, or start Bridge for cold-start.",
   selected: isChinese ? "已选" : "Selected",
   refresh: isChinese ? "刷新列表" : "Refresh",
-  settings: isChinese ? "端口设置" : "Settings",
+  settings: isChinese ? "更多设置" : "Settings",
 };
 
 async function fetchJson(url, timeoutMs = 450) {
@@ -38,21 +52,25 @@ function getSettings() {
         bridgePort: DEFAULT_BRIDGE_PORT,
         internalPortStart: DEFAULT_INTERNAL_PORT_START,
         preferredPort: 0,
+        deliveryMode: "smart",
+        inlineLimit: 1500,
       },
       (items) => {
         resolve({
           bridgePort: Number(items.bridgePort) || DEFAULT_BRIDGE_PORT,
           internalPortStart: Number(items.internalPortStart) || DEFAULT_INTERNAL_PORT_START,
           preferredPort: Number(items.preferredPort) || 0,
+          deliveryMode: ["smart", "inline", "link"].includes(items.deliveryMode) ? items.deliveryMode : "smart",
+          inlineLimit: Number(items.inlineLimit) || 1500,
         });
       }
     );
   });
 }
 
-function setPreferredPort(port) {
+function saveSetting(patch) {
   return new Promise((resolve) => {
-    chrome.storage.sync.set({ preferredPort: port }, resolve);
+    chrome.storage.sync.set(patch, resolve);
   });
 }
 
@@ -63,11 +81,21 @@ function basename(p) {
 }
 
 async function render() {
+  document.getElementById("modeLabel").textContent = t.modeLabel;
+  document.getElementById("modeSmart").textContent = t.modeSmart;
+  document.getElementById("modeInline").textContent = t.modeInline;
+  document.getElementById("modeLink").textContent = t.modeLink;
   document.getElementById("sectionLabel").textContent = t.targetLabel;
   document.getElementById("refreshBtn").textContent = t.refresh;
   document.getElementById("optionsBtn").textContent = t.settings;
 
-  const { bridgePort, internalPortStart, preferredPort } = await getSettings();
+  const { bridgePort, internalPortStart, preferredPort, deliveryMode, inlineLimit } = await getSettings();
+
+  document.querySelectorAll(".seg-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.mode === deliveryMode);
+  });
+  document.getElementById("modeHint").textContent = t.modeHints[deliveryMode](inlineLimit);
+
   const bridgeBadge = document.getElementById("bridgeBadge");
   const listEl = document.getElementById("sessionList");
 
@@ -94,7 +122,6 @@ async function render() {
 
   listEl.innerHTML = "";
 
-  // Auto option
   const autoItem = document.createElement("div");
   autoItem.className = "item" + (preferredPort === 0 ? " active" : "");
   autoItem.innerHTML = `
@@ -105,7 +132,7 @@ async function render() {
     ${preferredPort === 0 ? `<span class="pill">${t.selected}</span>` : ""}
   `;
   autoItem.addEventListener("click", async () => {
-    await setPreferredPort(0);
+    await saveSetting({ preferredPort: 0 });
     render();
   });
   listEl.appendChild(autoItem);
@@ -131,12 +158,19 @@ async function render() {
       ${isSelected ? `<span class="pill">${t.selected}</span>` : ""}
     `;
     item.addEventListener("click", async () => {
-      await setPreferredPort(s.port);
+      await saveSetting({ preferredPort: s.port });
       render();
     });
     listEl.appendChild(item);
   }
 }
+
+document.querySelectorAll(".seg-btn").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    await saveSetting({ deliveryMode: btn.dataset.mode });
+    render();
+  });
+});
 
 document.getElementById("refreshBtn").addEventListener("click", render);
 document.getElementById("optionsBtn").addEventListener("click", () => {

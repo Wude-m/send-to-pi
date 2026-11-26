@@ -10,6 +10,7 @@ const {
   BRIDGE_PORT,
   USER_CONFIG_FILE,
   LAST_TERMINAL_FILE,
+  INBOX_DIR,
   loadUserConfig,
   readLastTerminal,
 } = require('../src/config');
@@ -81,6 +82,7 @@ if (command === 'status' || command === 'check') {
   const last = readLastTerminal();
   console.log(`Config file:        ${USER_CONFIG_FILE}`);
   console.log(`Last terminal file: ${LAST_TERMINAL_FILE}`);
+  console.log(`Inbox directory:    ${INBOX_DIR}`);
   console.log('\nEffective config:');
   console.log(JSON.stringify(cfg, null, 2));
   if (last) {
@@ -91,6 +93,8 @@ if (command === 'status' || command === 'check') {
   console.log(
     JSON.stringify(
       {
+        deliveryMode: 'smart',
+        inlineLimit: 1500,
         terminal: 'rex',
         launchCommand: 'rex run --interactive --cwd "{workdir}" --keep-open -- pi',
         focusOnSend: false,
@@ -136,6 +140,8 @@ Commands:
 Options via Environment Variables (or ~/.pi/send-to-pi/config.json):
   PI_BRIDGE_PORT     Daemon listening port (default: 18090)
   PI_INTERNAL_PORT   Pi session receiver start port (default: 18091)
+  PI_DELIVERY_MODE   smart (default) | inline | link
+  PI_INLINE_LIMIT    Char limit before smart mode saves to inbox @file (default: 1500)
   PI_WORKDIR         Working directory to launch Pi terminal in
   PI_TERMINAL        Preferred terminal (rex, ghostty, iterm2, warp, wezterm, kitty, alacritty, wt, terminal)
   PI_LAUNCH_CMD      Custom launch command template, supports {workdir}

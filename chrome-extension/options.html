@@ -7,14 +7,14 @@
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       padding: 16px 20px;
-      width: 340px;
+      width: 360px;
       color: #333;
       margin: 0;
     }
     h2 {
       font-size: 16px;
       margin-top: 0;
-      margin-bottom: 12px;
+      margin-bottom: 14px;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -28,13 +28,14 @@
       font-weight: 600;
       margin-bottom: 6px;
     }
-    input[type="number"] {
+    input[type="number"], select {
       width: 100%;
       box-sizing: border-box;
       padding: 8px 10px;
       border: 1px solid #ccc;
       border-radius: 6px;
       font-size: 14px;
+      background: #fff;
     }
     .hint {
       font-size: 12px;
@@ -68,9 +69,23 @@
 <body>
   <h2>🚀 Send to Pi</h2>
   <div class="field">
+    <label for="deliveryMode">Delivery Mode (内容填充模式)</label>
+    <select id="deliveryMode">
+      <option value="smart">Smart — Short inline, long saved as local .md @file (Recommended)</option>
+      <option value="inline">Inline — Always paste full Markdown into prompt</option>
+      <option value="link">Link Only — Article capture sends title + URL only</option>
+    </select>
+    <div class="hint">Smart mode keeps your terminal prompt clean while preserving full logged-in browser content on disk.</div>
+  </div>
+  <div class="field">
+    <label for="inlineLimit">Smart Inline Threshold (智能直填字数阈值)</label>
+    <input type="number" id="inlineLimit" min="200" max="50000" step="100" value="1500" />
+    <div class="hint">Default: 1500 chars. Content longer than this is saved to ~/.pi/send-to-pi/inbox/ and referenced via @file.</div>
+  </div>
+  <div class="field">
     <label for="bridgePort">Bridge Daemon Port</label>
     <input type="number" id="bridgePort" min="1024" max="65535" value="18090" />
-    <div class="hint">Default: 18090. Optional—if Bridge is not running, the extension automatically connects directly to active Pi sessions.</div>
+    <div class="hint">Default: 18090. Optional—if Bridge is not running, the extension connects directly to active Pi sessions.</div>
   </div>
   <div class="field">
     <label for="internalPortStart">Pi Direct Port Start (probes 5 ports)</label>

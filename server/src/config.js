@@ -12,8 +12,9 @@ if (!fs.existsSync(piHomeDir)) {
 }
 
 const SEND_TO_PI_DIR = path.join(piHomeDir, 'send-to-pi');
+const INBOX_DIR = path.join(SEND_TO_PI_DIR, 'inbox');
 try {
-  fs.mkdirSync(SEND_TO_PI_DIR, { recursive: true });
+  fs.mkdirSync(INBOX_DIR, { recursive: true });
 } catch (_err) {
   // Ignore creation errors.
 }
@@ -46,6 +47,12 @@ function readLastTerminal() {
   return parsed && typeof parsed === 'object' ? parsed : null;
 }
 
+function normalizeDeliveryMode(val) {
+  const s = String(val || '').trim().toLowerCase();
+  if (s === 'smart' || s === 'inline' || s === 'link') return s;
+  return '';
+}
+
 function loadUserConfig() {
   const fileCfg = readUserConfigFile();
   const bridgePort =
@@ -73,6 +80,16 @@ function loadUserConfig() {
       ? focusEnv === '1' || focusEnv === 'true' || focusEnv === 'yes'
       : Boolean(fileCfg.focusOnSend);
 
+  const deliveryMode =
+    normalizeDeliveryMode(process.env.PI_DELIVERY_MODE) ||
+    normalizeDeliveryMode(fileCfg.deliveryMode) ||
+    'smart';
+  const rawLimit =
+    parseInt(process.env.PI_INLINE_LIMIT, 10) ||
+    parseInt(fileCfg.inlineLimit, 10) ||
+    1500;
+  const inlineLimit = Number.isFinite(rawLimit) && rawLimit >= 200 ? rawLimit : 1500;
+
   return {
     bridgePort,
     internalPort,
@@ -82,6 +99,8 @@ function loadUserConfig() {
     launchCommand,
     workDir,
     focusOnSend,
+    deliveryMode,
+    inlineLimit,
   };
 }
 
@@ -91,7 +110,6 @@ const PI_INTERNAL_PORT = initialCfg.internalPort;
 const PI_INTERNAL_PORT_START = initialCfg.internalPortStart;
 const PI_INTERNAL_PORT_END = initialCfg.internalPortEnd;
 
-// Workdir priority: PI_WORKDIR -> config.json -> last active Pi workdir -> cwd -> homedir
 function getWorkDir() {
   const cfg = loadUserConfig();
   if (cfg.workDir && fs.existsSync(cfg.workDir)) {
@@ -129,6 +147,7 @@ module.exports = {
   PI_INTERNAL_PORT_START,
   PI_INTERNAL_PORT_END,
   SEND_TO_PI_DIR,
+  INBOX_DIR,
   USER_CONFIG_FILE,
   ACTIVE_SESSION_FILE,
   SESSION_REGISTRY_FILE,

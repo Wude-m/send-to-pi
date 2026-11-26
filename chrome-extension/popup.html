@@ -12,6 +12,7 @@
       --text: #0f172a;
       --muted: #64748b;
       --accent: #2563eb;
+      --accent-soft: rgba(37, 99, 235, 0.12);
       --ok: #16a34a;
       --warn: #d97706;
     }
@@ -23,6 +24,7 @@
         --text: #f9fafb;
         --muted: #9ca3af;
         --accent: #60a5fa;
+        --accent-soft: rgba(96, 165, 250, 0.16);
         --ok: #4ade80;
         --warn: #fbbf24;
       }
@@ -40,7 +42,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
     .title {
       font-size: 15px;
@@ -66,6 +68,34 @@
       letter-spacing: 0.04em;
       color: var(--muted);
       margin: 10px 0 6px;
+    }
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+    }
+    .seg-btn {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 4px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .seg-btn.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .mode-hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
     }
     .list {
       display: flex;
@@ -147,6 +177,14 @@
     <div class="title">🚀 Send to Pi</div>
     <div id="bridgeBadge" class="badge">Checking...</div>
   </div>
+
+  <div id="modeLabel" class="section-label">Delivery Mode</div>
+  <div class="segmented">
+    <button class="seg-btn" data-mode="smart" id="modeSmart">Smart</button>
+    <button class="seg-btn" data-mode="inline" id="modeInline">Inline</button>
+    <button class="seg-btn" data-mode="link" id="modeLink">Link Only</button>
+  </div>
+  <div id="modeHint" class="mode-hint"></div>
 
   <div id="sectionLabel" class="section-label">Target Pi Session</div>
   <div id="sessionList" class="list"></div>

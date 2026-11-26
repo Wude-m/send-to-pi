@@ -15,6 +15,7 @@
 
 - 🔌 **零 Daemon 直连模式（100% 终端客户端无关）**：只要你的 Pi 正在运行（无论在 Rex、Ghostty、Warp、VS Code、Cursor、Windows Terminal 还是 tmux 里），Chrome 扩展在未检测到 `18090` Bridge 时会自动直连 `18091~18095` 的 Pi 扩展，通过 `ctx.ui.setEditorText()` 直接填入输入框——**无需常驻后台进程**。
 - 🪟 **真实活跃会话路由 + 扩展弹窗选窗口**：Pi 扩展通过 `input` / `agent_start` 实时更新活跃时间，多开窗口时自动送到你刚聊天的那个窗口；点击浏览器工具栏扩展图标可查看全部在线 Pi 会话（项目名 + 终端名）并一键锁定目标窗口。
+- 🧠 **智能长度分流（短文直填，长文自动落盘 `@路径`）**：≤ 1500 字（可配）直接预填进输入框；超长文章自动保存为 `~/.pi/send-to-pi/inbox/*.md`（自动定期清理），输入框仅填极简 3 行标题 + URL + `@文件路径`——既保留已登录浏览器的无损正文，又不刷屏输入框！可在弹窗一键切换「智能分流 / 全文直填 / 仅发链接」。
 - 🎯 **Prefill 预填模式（绝不自动回车）**：内容送到输入框后停在末尾，方便你补充指令再回车发送。
 - 📝 **HTML 智能转 Markdown & 正文提取**：保留代码块语言/缩进、表格、列表与链接，支持 X/Twitter 主帖及常见文章正文提取。
 - ⚡ **4 层跨客户端冷启动（可选 Bridge 守护进程）**：当所有 Pi 都关闭时，若启动了 Bridge（`npx send-to-pi start`），按以下 4 层依次兜底：
@@ -89,12 +90,20 @@ npx send-to-pi status
 | :--- | :--- | :--- | :--- |
 | `PI_BRIDGE_PORT` | `bridgePort` | `18090` | 可选 Bridge 守护进程监听端口 |
 | `PI_INTERNAL_PORT` | `internalPort` | `18091` | Pi 会话直连起始端口（自动探测 5 个端口） |
+| `PI_DELIVERY_MODE` | `deliveryMode` | `smart` | 内容填充模式：`smart`（智能分流）/ `inline`（全文直填）/ `link`（仅发链接） |
+| `PI_INLINE_LIMIT` | `inlineLimit` | `1500` | `smart` 模式下自动落盘转 `@路径` 的字数阈值 |
 | `PI_WORKDIR` | `workDir` | 上次 Pi 目录 / cwd | 冷启动默认进入的工作目录 |
 | `PI_TERMINAL` | `terminal` | 自动（上次终端） | 偏好终端（`rex`, `ghostty`, `iterm2`, `warp`, `wezterm`, `kitty`, `alacritty`, `wt`, `terminal`） |
 | `PI_LAUNCH_CMD` | `launchCommand` | 空 | 万能自定义冷启动命令模板，支持 `{workdir}` 占位符 |
 | `PI_FOCUS_ON_SEND` | `focusOnSend` | `false` | 设为 `true` 时热投递后自动切回对应终端窗口（macOS） |
 
 ---
+
+## 🆕 v1.4.0 变更
+
+- **智能分流落盘（防长文刷屏）**：超 1500 字正文自动保存至 `~/.pi/send-to-pi/inbox/*.md`（超过 7 天或 50 份自动清理），输入框仅填 3 行标题 + 链接 + `@路径` 引用。
+- **弹窗一键切换填充模式**：Chrome 扩展弹窗支持一键切换「智能分流 / 全文直填 / 仅发链接」，右键新增「仅发送当前页面链接」。
+- **X/Twitter 深度去噪**：自动剥离末尾预览卡片、浏览量/引用统计尾行及冗余 `t.co` 包裹链接，超长标题自动截断。
 
 ## 🆕 v1.3.0 变更
 

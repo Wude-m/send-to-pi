@@ -234,7 +234,7 @@ test('discoverAllActivePis sorts concurrent sessions by activeAt descending', as
   }
 });
 
-test('All JS files pass Node syntax check and manifest.json is valid v1.3.0', () => {
+test('All JS files pass Node syntax check and manifest.json is valid v1.4.0', () => {
   const root = path.resolve(__dirname, '..');
   const jsFiles = [
     'chrome-extension/background.js',
@@ -256,8 +256,154 @@ test('All JS files pass Node syntax check and manifest.json is valid v1.3.0', ()
   }
 
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'chrome-extension/manifest.json'), 'utf8'));
-  assert.equal(manifest.version, '1.3.0');
+  assert.equal(manifest.version, '1.4.0');
   assert.equal(manifest.action.default_popup, 'popup.html');
+});
+
+test('Pi extension v1.4.0 smart delivery: short inline, long saved to inbox @file, link mode, and inbox pruning', () => {
+  const root = path.resolve(__dirname, '..');
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'send-to-pi-smart-'));
+  const extPath = path.join(root, 'pi-extension/index.ts');
+
+  const script = `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import register from ${JSON.stringify('file://' + extPath)};
+
+    const handlers = {};
+    const pi = { on: (name, fn) => { handlers[name] = fn; } };
+    let editorText = '';
+    const ctx = {
+      cwd: '/tmp/smart-demo',
+      ui: {
+        getEditorText: () => editorText,
+        setEditorText: (val) => { editorText = val; },
+        notify: () => {},
+      },
+    };
+
+    register(pi);
+    await handlers.session_start({}, ctx);
+
+    // 1. Short content stays inline
+    editorText = '';
+    const shortRes = await (await fetch('http://127.0.0.1:19291/receive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'article',
+        title: 'Short Note',
+        url: 'https://example.com/short',
+        text: 'A short paragraph under limit.',
+        lang: 'en',
+        deliveryMode: 'smart',
+        inlineLimit: 500,
+      }),
+    })).json();
+    assert.equal(shortRes.delivery, 'inline');
+    assert.equal(shortRes.savedFile, null);
+    assert.match(editorText, /A short paragraph under limit\./);
+
+    // 2. Long content (> inlineLimit) offloads to inbox/*.md and inserts clean 3-line @file reference
+    editorText = '';
+    const longBody = 'Paragraph content about agent memory. '.repeat(80);
+    const longTitle = 'X 上的 Tao Wang：' + '超长重复标题内容'.repeat(20);
+    const longRes = await (await fetch('http://127.0.0.1:19291/receive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'article',
+        title: longTitle,
+        url: 'https://x.com/Tao100086/status/2125068536913776824',
+        text: longBody,
+        lang: 'zh',
+        deliveryMode: 'smart',
+        inlineLimit: 500,
+      }),
+    })).json();
+    assert.equal(longRes.delivery, 'file');
+    assert.ok(longRes.savedFile && fs.existsSync(longRes.savedFile));
+    assert.ok(editorText.length < 400, 'Editor text should remain concise 3 lines');
+    assert.match(editorText, /【本地正文】: @/);
+    assert.match(editorText, /…/);
+    const saved = fs.readFileSync(longRes.savedFile, 'utf8');
+    assert.ok(saved.includes('Paragraph content about agent memory'));
+    assert.ok(saved.includes('Source: https://x.com/Tao100086'));
+
+    // 3. Inline mode forces full text even when over limit
+    editorText = '';
+    const inlineRes = await (await fetch('http://127.0.0.1:19291/receive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'article',
+        title: 'Force Inline',
+        url: 'https://example.com/inline',
+        text: longBody,
+        lang: 'en',
+        deliveryMode: 'inline',
+        inlineLimit: 500,
+      }),
+    })).json();
+    assert.equal(inlineRes.delivery, 'inline');
+    assert.ok(editorText.length > 1000);
+
+    // 4. Link mode strips article body but keeps title + URL
+    editorText = '';
+    const linkRes = await (await fetch('http://127.0.0.1:19291/receive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'article',
+        title: 'Link Only Article',
+        url: 'https://example.com/link-only',
+        text: longBody,
+        lang: 'en',
+        deliveryMode: 'link',
+      }),
+    })).json();
+    assert.equal(linkRes.delivery, 'link');
+    assert.ok(editorText.includes('https://example.com/link-only'));
+    assert.ok(!editorText.includes('Paragraph content'));
+
+    // 5. Inbox pruning caps files at <= 50
+    const inboxDir = path.join(process.env.HOME, '.pi/send-to-pi/inbox');
+    for (let i = 0; i < 55; i++) {
+      fs.writeFileSync(path.join(inboxDir, 'old-' + String(i).padStart(2, '0') + '.md'), 'old', 'utf8');
+    }
+    await fetch('http://127.0.0.1:19291/receive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'article',
+        title: 'Trigger Prune',
+        url: 'https://example.com/prune',
+        text: longBody,
+        lang: 'en',
+        deliveryMode: 'smart',
+        inlineLimit: 500,
+      }),
+    });
+    const remaining = fs.readdirSync(inboxDir).filter((f) => f.endsWith('.md'));
+    assert.ok(remaining.length <= 50, 'Expected <= 50 inbox files, got ' + remaining.length);
+
+    await handlers.session_shutdown({}, ctx);
+  `;
+
+  try {
+    execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      env: {
+        ...process.env,
+        HOME: tmpHome,
+        PI_INTERNAL_PORT: '19291',
+        TERM_PROGRAM: 'rex',
+      },
+      stdio: 'pipe',
+    });
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
 });
 
 test('Pi extension end-to-end: detects terminal, refreshes activeAt on input, receives direct POST, persists last-terminal', () => {

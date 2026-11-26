@@ -1,9 +1,9 @@
 /**
- * send-to-pi Bridge Daemon
+ * send-to-pi Bridge Daemon (v1.4.0)
  *
  * Listens on: 127.0.0.1:18090 (receives Chrome extension requests)
  * Dynamically discovers active Pi sessions (18091 ~ 18095 or ~/.pi/send-to-pi/sessions.json)
- * Supports 4-layer adaptive cold-start terminal launching & clipboard fallback.
+ * Supports smart long-content file offload, 4-layer adaptive cold-start launch, and clipboard fallback.
  */
 
 const http = require('http');
@@ -14,15 +14,20 @@ const {
   PI_INTERNAL_PORT,
   PI_INTERNAL_PORT_START,
   PI_INTERNAL_PORT_END,
+  INBOX_DIR,
   ACTIVE_SESSION_FILE,
   SESSION_REGISTRY_FILE,
   PENDING_FILE,
+  loadUserConfig,
   getWorkDir,
   readLastTerminal,
   shouldFocusOnSend,
 } = require('./config');
 const { launchTerminal, focusTerminal } = require('./launchers');
 const { copyToClipboard } = require('./clipboard');
+
+const INBOX_MAX_FILES = 50;
+const INBOX_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function checkPiHealth(port) {
   return new Promise((resolve) => {
@@ -93,7 +98,6 @@ function writeSessionRegistry(sessions) {
 async function discoverAllActivePis(portStart = PI_INTERNAL_PORT_START, portEnd = PI_INTERNAL_PORT_END) {
   const byPort = new Map();
 
-  // Probe full port range in parallel so no live Pi is ever missed.
   const ports = [];
   for (let p = portStart; p <= portEnd; p++) ports.push(p);
 
@@ -125,7 +129,6 @@ async function discoverAllActivePis(portStart = PI_INTERNAL_PORT_START, portEnd 
     (a, b) => Number(b.activeAt || b.updatedAt || 0) - Number(a.activeAt || a.updatedAt || 0)
   );
 
-  // Clean stale dead sessions from registry if it existed.
   if (registeredSessions.length > 0 && alive.length !== registeredSessions.length) {
     writeSessionRegistry(alive);
   }
@@ -139,7 +142,6 @@ async function findActivePi() {
     return { port: all[0].port, source: 'active-discovery', session: all[0] };
   }
 
-  // Legacy fallback file check (in case user runs on a custom port outside 18091~18095).
   if (fs.existsSync(ACTIVE_SESSION_FILE)) {
     try {
       const session = JSON.parse(fs.readFileSync(ACTIVE_SESSION_FILE, 'utf8'));
@@ -159,9 +161,188 @@ async function findActivePi() {
   return null;
 }
 
-function forwardToPi(port, content) {
+function cleanShortTitle(title, maxLen = 80) {
+  const s = String(title || '').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  return s.length <= maxLen ? s : s.slice(0, maxLen - 1).trimEnd() + '…';
+}
+
+function formatCharCount(count, isZh) {
+  if (count >= 1000) {
+    const k = (count / 1000).toFixed(1).replace(/\.0$/, '');
+    return isZh ? `约 ${k}k 字` : `~${k}k chars`;
+  }
+  return isZh ? `${count} 字` : `${count} chars`;
+}
+
+function buildSafeSlug(title, url) {
+  let hostPart = '';
+  let pathPart = '';
+  try {
+    if (url) {
+      const parsed = new URL(url);
+      hostPart = parsed.hostname.replace(/^www\./, '').replace(/[^a-zA-Z0-9]+/g, '-');
+      pathPart = parsed.pathname.split('/').filter(Boolean).slice(0, 2).join('-').replace(/[^a-zA-Z0-9]+/g, '-');
+    }
+  } catch {}
+
+  const titleAscii = String(title || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  const combined = [hostPart, pathPart || titleAscii]
+    .filter(Boolean)
+    .join('-')
+    .toLowerCase()
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 42);
+
+  return combined || 'clip';
+}
+
+function pruneInbox(inboxDir) {
+  try {
+    const now = Date.now();
+    const entries = fs
+      .readdirSync(inboxDir)
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => {
+        const fullPath = path.join(inboxDir, name);
+        try {
+          return { fullPath, mtimeMs: fs.statSync(fullPath).mtimeMs };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    entries.forEach((entry, idx) => {
+      if (idx >= INBOX_MAX_FILES || now - entry.mtimeMs > INBOX_MAX_AGE_MS) {
+        try {
+          fs.unlinkSync(entry.fullPath);
+        } catch {}
+      }
+    });
+  } catch {}
+}
+
+function saveToInboxFile({ title, url, type, markdownBody }) {
+  fs.mkdirSync(INBOX_DIR, { recursive: true });
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const baseName = `${stamp}-${buildSafeSlug(title, url)}`;
+
+  let targetPath = path.join(INBOX_DIR, `${baseName}.md`);
+  let seq = 2;
+  while (fs.existsSync(targetPath)) {
+    targetPath = path.join(INBOX_DIR, `${baseName}-${seq++}.md`);
+  }
+
+  const lines = [
+    `# ${title || 'Web Clip'}`,
+    '',
+    ...(url ? [`- Source: ${url}`] : []),
+    `- Captured: ${now.toISOString()}`,
+    ...(type ? [`- Type: ${type}`] : []),
+    '',
+    '---',
+    '',
+    markdownBody.trim(),
+    '',
+  ];
+  fs.writeFileSync(targetPath, lines.join('\n'), 'utf8');
+  pruneInbox(INBOX_DIR);
+  return targetPath;
+}
+
+function formatContent(payload) {
+  const { type, text, title, url, lang } = payload;
+  const isZh = lang === 'zh';
+  const shortTitle = cleanShortTitle(title);
+
+  if (type === 'selection') {
+    const label = isZh ? '【来源】' : '[Source]';
+    return `${label}: ${shortTitle || (isZh ? '网页摘录' : 'Web Snippet')} (${url || ''})\n\n${text}\n\n`;
+  }
+  if (type === 'article') {
+    const titleLabel = isZh ? '【网页文章】' : '[Web Article]';
+    const linkLabel = isZh ? '【网页链接】' : '[Link]';
+    return `${titleLabel}: ${shortTitle || (isZh ? '正文' : 'Article')}\n${linkLabel}: ${url || ''}\n\n${text}\n\n`;
+  }
+  if (type === 'link') {
+    const label = isZh ? '【网页链接】' : '[Link]';
+    return `${label}: ${url}\n\n`;
+  }
+  const titleLabel = isZh ? '【网页标题】' : '[Title]';
+  const linkLabel = isZh ? '【网页链接】' : '[Link]';
+  return `${titleLabel}: ${shortTitle || (isZh ? '网页' : 'Page')}\n${linkLabel}: ${url || ''}\n\n`;
+}
+
+function prepareColdStartContent(payload, inlineContent) {
+  const cfg = loadUserConfig();
+  const mode = ['smart', 'inline', 'link'].includes(payload.deliveryMode)
+    ? payload.deliveryMode
+    : cfg.deliveryMode;
+  const rawLimit = Number(payload.inlineLimit) || cfg.inlineLimit;
+  const inlineLimit = Number.isFinite(rawLimit) && rawLimit >= 200 ? Math.floor(rawLimit) : 1500;
+  const isZh = payload.lang === 'zh';
+  const shortTitle = cleanShortTitle(payload.title);
+  const url = String(payload.url || '');
+  const body = typeof payload.text === 'string' && payload.text.trim() ? payload.text.trim() : '';
+
+  if (mode === 'link' && payload.type === 'article' && url) {
+    const titleLabel = isZh ? '【网页标题】' : '[Title]';
+    const linkLabel = isZh ? '【网页链接】' : '[Link]';
+    return {
+      text: `${titleLabel}: ${shortTitle || (isZh ? '网页' : 'Page')}\n${linkLabel}: ${url}\n\n`,
+      delivery: 'link',
+      savedFile: null,
+    };
+  }
+
+  if (mode === 'smart' && body.length > inlineLimit) {
+    const savedFile = saveToInboxFile({
+      title: payload.title || (isZh ? '网页内容' : 'Web Clip'),
+      url,
+      type: payload.type || 'article',
+      markdownBody: body,
+    });
+    const headerLabel =
+      payload.type === 'selection'
+        ? isZh ? '【来源】' : '[Source]'
+        : isZh ? '【网页文章】' : '[Web Article]';
+    const linkLabel = isZh ? '【网页链接】' : '[Link]';
+    const fileLabel = isZh ? '【本地正文】' : '[Saved Content]';
+    const lines = [
+      `${headerLabel}: ${shortTitle || (isZh ? '网页内容' : 'Web Clip')}`,
+      ...(url ? [`${linkLabel}: ${url}`] : []),
+      `${fileLabel}: @${savedFile} (${formatCharCount(body.length, isZh)})`,
+      '',
+      '',
+    ];
+    return { text: lines.join('\n'), delivery: 'file', savedFile };
+  }
+
+  return { text: inlineContent, delivery: 'inline', savedFile: null };
+}
+
+function forwardToPi(port, payload, content) {
   return new Promise((resolve, reject) => {
-    const data = JSON.stringify({ content });
+    const cfg = loadUserConfig();
+    const data = JSON.stringify({
+      content,
+      type: payload.type,
+      text: payload.text,
+      title: payload.title,
+      url: payload.url,
+      lang: payload.lang,
+      deliveryMode: payload.deliveryMode || cfg.deliveryMode,
+      inlineLimit: payload.inlineLimit || cfg.inlineLimit,
+    });
     const req = http.request(
       {
         hostname: '127.0.0.1',
@@ -172,7 +353,7 @@ function forwardToPi(port, content) {
           'Content-Type': 'application/json; charset=utf-8',
           'Content-Length': Buffer.byteLength(data),
         },
-        timeout: 1500,
+        timeout: 1800,
       },
       (res) => {
         let raw = '';
@@ -202,28 +383,6 @@ function forwardToPi(port, content) {
   });
 }
 
-function formatContent(payload) {
-  const { type, text, title, url, lang } = payload;
-  const isZh = lang === 'zh';
-
-  if (type === 'selection') {
-    const label = isZh ? '【来源】' : '[Source]';
-    return `${label}: ${title || (isZh ? '网页摘录' : 'Web Snippet')} (${url || ''})\n\n${text}\n\n`;
-  }
-  if (type === 'article') {
-    const titleLabel = isZh ? '【网页文章】' : '[Web Article]';
-    const linkLabel = isZh ? '【网页链接】' : '[Link]';
-    return `${titleLabel}: ${title || (isZh ? '正文' : 'Article')}\n${linkLabel}: ${url || ''}\n\n${text}\n\n`;
-  }
-  if (type === 'link') {
-    const label = isZh ? '【网页链接】' : '[Link]';
-    return `${label}: ${url}\n\n`;
-  }
-  const titleLabel = isZh ? '【网页标题】' : '[Title]';
-  const linkLabel = isZh ? '【网页链接】' : '[Link]';
-  return `${titleLabel}: ${title || (isZh ? '网页' : 'Page')}\n${linkLabel}: ${url || ''}\n\n`;
-}
-
 function createBridgeServer(deps = {}) {
   const launch = deps.launchTerminal || launchTerminal;
   const focus = deps.focusTerminal || focusTerminal;
@@ -246,14 +405,17 @@ function createBridgeServer(deps = {}) {
       const sessions = await discoverAll();
       const activePi = sessions[0] || null;
       const lastTerminal = readLastTerminal();
+      const cfg = loadUserConfig();
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(
         JSON.stringify({
           status: 'ok',
-          version: '1.3.0',
+          version: '1.4.0',
           platform: process.platform,
           bridgePort: BRIDGE_PORT,
           defaultInternalPort: PI_INTERNAL_PORT,
+          deliveryMode: cfg.deliveryMode,
+          inlineLimit: cfg.inlineLimit,
           activePi: activePi
             ? {
                 port: activePi.port,
@@ -287,17 +449,20 @@ function createBridgeServer(deps = {}) {
           const activePi = await discover();
           if (activePi) {
             try {
-              const reply = await forwardToPi(activePi.port, content);
+              const reply = await forwardToPi(activePi.port, payload, content);
               const sessionMeta = { ...(activePi.session || {}), ...(reply || {}) };
               if (shouldFocusOnSend()) {
                 focus(sessionMeta).catch(() => {});
               }
-              console.log(`[Bridge] Forwarded content to Pi on port ${activePi.port} (${sessionMeta.terminal || 'unknown'}).`);
+              console.log(`[Bridge] Forwarded content to Pi on port ${activePi.port} (${sessionMeta.terminal || 'unknown'}, delivery=${reply.delivery || 'inline'}).`);
               res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
               res.end(
                 JSON.stringify({
                   success: true,
                   mode: 'prefilled',
+                  delivery: reply.delivery || 'inline',
+                  savedFile: reply.savedFile || null,
+                  charCount: reply.charCount || content.length,
                   port: activePi.port,
                   workdir: sessionMeta.workdir || null,
                   terminal: sessionMeta.terminal || null,
@@ -311,9 +476,10 @@ function createBridgeServer(deps = {}) {
             }
           }
 
-          // 2. Cold-start flow: write pending file and launch terminal via 4-layer adaptive launcher.
+          // 2. Cold-start flow: smart-offload long content before writing pending file.
           console.log('[Bridge] No active Pi detected. Writing pending file and launching terminal...');
-          fs.writeFileSync(PENDING_FILE, content, 'utf8');
+          const prepared = prepareColdStartContent(payload, content);
+          fs.writeFileSync(PENDING_FILE, prepared.text, 'utf8');
 
           const workDir = getWorkDir();
           const launchResult = await launch(workDir);
@@ -324,6 +490,8 @@ function createBridgeServer(deps = {}) {
               JSON.stringify({
                 success: true,
                 mode: 'launched',
+                delivery: prepared.delivery,
+                savedFile: prepared.savedFile,
                 terminal: launchResult.terminal || 'Default Terminal',
                 message: '已启动终端唤醒 Pi，内容已在输入框备好！',
               })
@@ -332,7 +500,7 @@ function createBridgeServer(deps = {}) {
           }
 
           // 3. Layer 4 fallback: copy formatted Markdown to clipboard so content is never lost.
-          const copied = await clipboard(content);
+          const copied = await clipboard(prepared.text);
           if (copied) {
             console.warn('[Bridge] Terminal launch failed; copied content to system clipboard as fallback.');
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -340,6 +508,8 @@ function createBridgeServer(deps = {}) {
               JSON.stringify({
                 success: true,
                 mode: 'clipboard',
+                delivery: prepared.delivery,
+                savedFile: prepared.savedFile,
                 error: launchResult && launchResult.error,
                 message: '未能自动拉起终端，已复制到剪贴板，请直接粘贴！',
               })
@@ -374,7 +544,7 @@ function startDaemon() {
 
   server.listen(BRIDGE_PORT, '127.0.0.1', () => {
     console.log(`===============================================`);
-    console.log(`🚀 send-to-pi Bridge Daemon v1.3.0 is running!`);
+    console.log(`🚀 send-to-pi Bridge Daemon v1.4.0 is running!`);
     console.log(`📡 Listening on: http://127.0.0.1:${BRIDGE_PORT}`);
     console.log(`💻 Platform:     ${process.platform}`);
     console.log(`📂 Work Dir:     ${getWorkDir()}`);
@@ -404,4 +574,5 @@ module.exports = {
   findActivePi,
   discoverAllActivePis,
   formatContent,
+  prepareColdStartContent,
 };
